@@ -1,0 +1,8 @@
+streamlit
+ollama
+pdf2image
+Pillow
+python-dotenv
+google-generativeai==0.8.4
+zipfile36
+tqdm
