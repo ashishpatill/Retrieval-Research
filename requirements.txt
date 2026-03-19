@@ -1,8 +1,9 @@
 streamlit
+gradio
 ollama
 pdf2image
 Pillow
 python-dotenv
-google-generativeai==0.8.4
-zipfile36
+google-genai
 tqdm
+opencv-python

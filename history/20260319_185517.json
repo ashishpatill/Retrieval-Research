@@ -1,0 +1,46 @@
+{
+  "timestamp": "20260319_185517",
+  "mode": "Hybrid (Recommended)",
+  "results": [
+    {
+      "filename": "Minor-M25Ai2117-_hardware_design.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "glm": "Minor : Hardware design for AI\n\nRoll no.: M25Ai2117 Name: Ashish Risey\n\nQ.1. Ans. Parameters: 110 M\nSentiment analysis\nBatch size: 32\nSequence length: 128 tokens\nTarget throughput: \u2265 1500 influence/sec\nMax allowed latency \u2264 25ms\nPower budget: 300W\nModel size in PPI: 220 MB\nEstimated compute requirement per influence: 22 GFlops.\n\nQ.2. Ans. If Throughput target = 1500 inf/sec \u00d7 22 GFlops/inf\n= 63000 GFlops/\n\nBatch compute = 32\u00d722 = 704 GFlops/batch.\n\nLatency constraint \u2264 25ms\nEffective TFLOPs \u2265 704 GFlops = 28,160 GFlops\n0.025 s\n\nSo we need 33 TFLOPs for throughput.\nand more than 28.2 TFLOPs to sustain\n\nQ.3. Need to consider throughput + latency + power + data movement\n\n1) GPU-A (35 TFLOPs) Needs: 80% of peak to hit 28.2\nvery high high requirement, comm miss latency.\n\n2) GPU-B: very high high power req.",
+          "final": "Minor : Hardware design for AI\n\nRoll no.: M25Ai2117 Name: Ashish Risey\n\nQ.1. Ans. Parameters: 110 M\nSentiment analysis\nBatch size: 32\nSequence length: 128 tokens\nTarget throughput: \u2265 1500 influence/sec\nMax allowed latency \u2264 25ms\nPower budget: 300W\nModel size in PPI: 220 MB\nEstimated compute requirement per influence: 22 GFlops.\n\nQ.2. Ans. If Throughput target = 1500 inf/sec \u00d7 22 GFlops/inf\n= 63000 GFlops/\n\nBatch compute = 32\u00d722 = 704 GFlops/batch.\n\nLatency constraint \u2264 25ms\nEffective TFLOPs \u2265 704 GFlops = 28,160 GFlops\n0.025 s\n\nSo we need 33 TFLOPs for throughput.\nand more than 28.2 TFLOPs to sustain\n\nQ.3. Need to consider throughput + latency + power + data movement\n\n1) GPU-A (35 TFLOPs) Needs: 80% of peak to hit 28.2\nvery high high requirement, comm miss latency.\n\n2) GPU-B: very high high power req."
+        },
+        {
+          "page": 2,
+          "glm": "Power efficiency: A => 35/120 = 0.29 TF/w\nD => 0.89 TF/w\nB => 125/250 = 0.80 TF/w\n\nMore GPU D has just balance of all parameters.\n\nGPU-B is also strong just costly.",
+          "final": "Power efficiency: A => 35/120 = 0.29 TF/w\nD => 0.89 TF/w\nB => 125/250 = 0.80 TF/w\n\nMore GPU D has just balance of all parameters.\n\nGPU-B is also strong just costly."
+        },
+        {
+          "page": 3,
+          "glm": "Q.2. Maximum latency pin input: 3ms.\nclock frequency: 800 MHz.\none mac cycle pin compute unit.\nMad available parallel mac units: 400.\nmemory is not bottleneck.\n\nAmb cycles/ip = 300MHz x 3ms.\n= 900,000 cycles.\n\nNeeded MACs = 2.7 x 10^6 with p parallel macs\ncycle = 2.7 x 10^6\nP\nP \u2265 2.7 x 10^6 \u2265 3\n9 x 10^5\nP \u2265 3.",
+          "final": "Q.2. Maximum latency pin input: 3ms.\nclock frequency: 800 MHz.\none mac cycle pin compute unit.\nMad available parallel mac units: 400.\nmemory is not bottleneck.\n\nAmb cycles/ip = 300MHz x 3ms.\n= 900,000 cycles.\n\nNeeded MACs = 2.7 x 10^6 with p parallel macs\ncycle = 2.7 x 10^6\nP\nP \u2265 2.7 x 10^6 \u2265 3\n9 x 10^5\nP \u2265 3."
+        },
+        {
+          "page": 4,
+          "glm": "# Q.3. if ANS . AHainable performance = min (Peak computer, BW x AF)\n$$AI = \\frac{Peak compute}{BW} = \\frac{50GFLOPS}{12GB/s}$$\n\nIf $AI < 4.17$ then memory bound otherwise compute bound.\n\nFor RF inference computation mode is small but fetching is expensive hence this is memory-bound\n\nby ANS . Performance improves because higher throughput/lower latency\nSRAM is on-chip and fast so frequent operations will be handled with SRAM\n\nANS . Because early true latency is always negative\nthroughput/lower latency\nSRAM is on-chip and fast so frequent operations will be handled with SRAM",
+          "final": "# Q.3. if ANS . AHainable performance = min (Peak computer, BW x AF)\n$$AI = \\frac{Peak compute}{BW} = \\frac{50GFLOPS}{12GB/s}$$\n\nIf $AI < 4.17$ then memory bound otherwise compute bound.\n\nFor RF inference computation mode is small but fetching is expensive hence this is memory-bound\n\nby ANS . Performance improves because higher throughput/lower latency\nSRAM is on-chip and fast so frequent operations will be handled with SRAM\n\nANS . Because early true latency is always negative\nthroughput/lower latency\nSRAM is on-chip and fast so frequent operations will be handled with SRAM"
+        },
+        {
+          "page": 5,
+          "glm": "# 9.4.4 Number of clusters; $k=7$\nFeature dimension; $D=23$\nMax data points per batch; $N=1024$\nDistance metric: squared distance\n$q8.8$ is 16 bit, fixed point $(8-8 \\text{ int - fractional point})$\nSign bit + 7 integer bits + 8 fractional bits\nMax iterations allowed; 12\nClock freq: 250MHz\nDSP block: 96\nExternal DRAM (4GB/s, 1 port)\n\nGlobal bus\n\nBRAM on chip\n512KB\nControl FSM\n\nMultiples per distance (accumulation): $N \\cdot K \\cdot (D-1) = 1024 \\times 7 \\times 23 = 164,864$\n\nDistance multiplies/iteration: $N \\cdot K \\cdot (D-1) = 1024 \\times 7 \\times 22 = 157,696$\n\nDistance adds/iteration: $N \\cdot K \\cdot (D-1) = 1024 \\times 7 \\times 22 = 157,696$",
+          "final": "# 9.4.4 Number of clusters; $k=7$\nFeature dimension; $D=23$\nMax data points per batch; $N=1024$\nDistance metric: squared distance\n$q8.8$ is 16 bit, fixed point $(8-8 \\text{ int - fractional point})$\nSign bit + 7 integer bits + 8 fractional bits\nMax iterations allowed; 12\nClock freq: 250MHz\nDSP block: 96\nExternal DRAM (4GB/s, 1 port)\n\nGlobal bus\n\nBRAM on chip\n512KB\nControl FSM\n\nMultiples per distance (accumulation): $N \\cdot K \\cdot (D-1) = 1024 \\times 7 \\times 23 = 164,864$\n\nDistance multiplies/iteration: $N \\cdot K \\cdot (D-1) = 1024 \\times 7 \\times 22 = 157,696$\n\nDistance adds/iteration: $N \\cdot K \\cdot (D-1) = 1024 \\times 7 \\times 22 = 157,696$"
+        },
+        {
+          "page": 6,
+          "glm": "Centroid update per iteration:\nAccumulate assigned points. $N \\times D = 1024 \\times 23$\n$= 23,552$ adds.\n\nCompute new centroids: $1/\\text{count} = K \\times D \\text{ multiplications}$\n$= 7 \\times 23$\n$= 161(\\text{multiples})$\n\nTotal iterations $= 164,864 + 161 = 165,025$.\nAdds/iter $= 157,696 + 23552 = 181,248$.\nTotal ops/iter $= 346,273$.\n\nWestcase 12 iterations\nMulti: $165,025 \\times 12 = 1,980,300$\nAdds: $181,248 \\times 12 = 2,174,976$.\nTotal ops/iter $= 346,273$.\n\nWestcase 12 iterations\nMulti: $165,025 \\times 12 = 1,980,300$\nAdds: $181,248 \\times 12 = 2,174,976$.\nTotal ops/iter $= 346,273$.\n\nTime taken $= \\frac{4.155 \\times 10^6}{250 \\times 10^6} = 0.01662 = 16.6 \\text{ ms}$.\n\nDistance and centroid update update cannot turn parallel.",
+          "final": "Centroid update per iteration:\nAccumulate assigned points. $N \\times D = 1024 \\times 23$\n$= 23,552$ adds.\n\nCompute new centroids: $1/\\text{count} = K \\times D \\text{ multiplications}$\n$= 7 \\times 23$\n$= 161(\\text{multiples})$\n\nTotal iterations $= 164,864 + 161 = 165,025$.\nAdds/iter $= 157,696 + 23552 = 181,248$.\nTotal ops/iter $= 346,273$.\n\nWestcase 12 iterations\nMulti: $165,025 \\times 12 = 1,980,300$\nAdds: $181,248 \\times 12 = 2,174,976$.\nTotal ops/iter $= 346,273$.\n\nWestcase 12 iterations\nMulti: $165,025 \\times 12 = 1,980,300$\nAdds: $181,248 \\times 12 = 2,174,976$.\nTotal ops/iter $= 346,273$.\n\nTime taken $= \\frac{4.155 \\times 10^6}{250 \\times 10^6} = 0.01662 = 16.6 \\text{ ms}$.\n\nDistance and centroid update update cannot turn parallel."
+        },
+        {
+          "page": 7,
+          "glm": "Q.5.1> Ans. Yes improving batch size improves tensor core utilization because it increases parallel work. So, more independent operation.\n- Makes GEMM/conv, kernels larger\n- So, APD can keep more warps/sms.\n- Hence busy SMS (sutter utilization)\n\nCan batch size be limited by memory (latency so, too large batch cause problem)\n\n11> Ans. Block tiling; each thread block computes a tile of output (e.g. 128\u00d7128)\n\nWarp tiling; each warp computes a suitable.\n\nConvolution + Activation reduces intermediate memory usage.\n\nImproves performance/energy.",
+          "final": "Q.5.1> Ans. Yes improving batch size improves tensor core utilization because it increases parallel work. So, more independent operation.\n- Makes GEMM/conv, kernels larger\n- So, APD can keep more warps/sms.\n- Hence busy SMS (sutter utilization)\n\nCan batch size be limited by memory (latency so, too large batch cause problem)\n\n11> Ans. Block tiling; each thread block computes a tile of output (e.g. 128\u00d7128)\n\nWarp tiling; each warp computes a suitable.\n\nConvolution + Activation reduces intermediate memory usage.\n\nImproves performance/energy."
+        }
+      ]
+    }
+  ]
+}
