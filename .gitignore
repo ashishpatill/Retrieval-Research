@@ -208,3 +208,7 @@ __marimo__/
 
 # Local retrieval artifacts
 data/
+
+# Web app artifacts
+node_modules/
+apps/web/.next/
