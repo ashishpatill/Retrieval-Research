@@ -104,8 +104,13 @@ def cmd_eval(args: argparse.Namespace) -> None:
     for mode, mode_metrics in metrics["modes"].items():
         print(
             f"{mode}: term_hit_rate={mode_metrics['term_hit_rate']:.3f} "
-            f"page_hit_rate={mode_metrics['page_hit_rate']:.3f} mrr={mode_metrics['mrr']:.3f}"
+            f"page_hit_rate={mode_metrics['page_hit_rate']:.3f} "
+            f"answerable_rate={mode_metrics['answerable_rate']:.3f} "
+            f"mrr={mode_metrics['mrr']:.3f}"
         )
+    planner_vs_static = metrics.get("planner_vs_static", {})
+    if planner_vs_static.get("available"):
+        print(planner_vs_static["summary"])
     print(f"saved: {json_path}")
     print(f"saved: {md_path}")
 
@@ -130,7 +135,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     index = sub.add_parser("index", help="Build retrieval indexes")
     index.add_argument("document_id")
-    index.add_argument("--mode", choices=["all", "bm25", "dense", "hybrid", "visual", "planner"], default="all")
+    index.add_argument("--mode", choices=["all", "bm25", "dense", "hybrid", "visual", "graph", "planner"], default="all")
     index.add_argument("--visual-backend", choices=["baseline", "colpali"], default="baseline")
     index.add_argument("--colpali-model", default=DEFAULT_COLPALI_MODEL)
     index.add_argument("--device", default="auto", help="ColPali device: auto, cpu, mps, cuda:0, etc.")

@@ -50,6 +50,40 @@ def _load_manifest(path: str) -> Dict[str, Any]:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+def _planner_static_comparison(metrics_by_mode: Dict[str, Dict[str, float]]) -> Dict[str, Any]:
+    planner = metrics_by_mode.get("planner")
+    if not planner:
+        return {"available": False, "reason": "planner mode was not run"}
+
+    baselines = {mode: values for mode, values in metrics_by_mode.items() if mode != "planner"}
+    if not baselines:
+        return {"available": False, "reason": "no static baseline modes were run"}
+
+    baseline_keys = ("term_hit_rate", "page_hit_rate", "citation_support_rate", "answerable_rate", "mrr", "avg_confidence")
+    baseline_avg = {
+        key: sum(values[key] for values in baselines.values()) / len(baselines)
+        for key in baseline_keys
+    }
+    delta = {key: planner[key] - baseline_avg[key] for key in baseline_keys}
+    wins = [key for key, value in delta.items() if value > 0]
+    losses = [key for key, value in delta.items() if value < 0]
+
+    return {
+        "available": True,
+        "baseline_modes": list(baselines.keys()),
+        "baseline_average": baseline_avg,
+        "planner": {key: planner[key] for key in baseline_keys},
+        "delta_vs_baseline_avg": delta,
+        "wins": wins,
+        "losses": losses,
+        "summary": (
+            f"Planner beats static average on {len(wins)}/{len(baseline_keys)} metrics."
+            if wins
+            else "Planner does not beat static average on any tracked metric."
+        ),
+    }
+
+
 def run_eval(
     manifest_path: str,
     store: Optional[ArtifactStore] = None,
@@ -121,6 +155,7 @@ def run_eval(
         "metrics": {
             "query_count": len(results),
             "modes": metrics_by_mode,
+            "planner_vs_static": _planner_static_comparison(metrics_by_mode),
         },
         "results": results,
     }
@@ -146,6 +181,28 @@ def report_to_markdown(report: Dict[str, Any]) -> str:
             f"{mode_metrics['citation_support_rate']:.3f} | {mode_metrics['answerable_rate']:.3f} | "
             f"{mode_metrics['avg_confidence']:.3f} | {mode_metrics['mrr']:.3f} |"
         )
+    lines.extend([
+        "",
+        "## Planner vs Static",
+        "",
+    ])
+    comparison = metrics.get("planner_vs_static", {"available": False})
+    if not comparison.get("available"):
+        lines.append(f"- Not available: {comparison.get('reason', 'insufficient modes')}")
+    else:
+        lines.append(f"- Baselines: {', '.join(comparison['baseline_modes'])}")
+        lines.append(f"- {comparison['summary']}")
+        lines.extend([
+            "",
+            "| Metric | Planner | Static avg | Delta |",
+            "|---|---:|---:|---:|",
+        ])
+        for metric in ("term_hit_rate", "page_hit_rate", "citation_support_rate", "answerable_rate", "mrr", "avg_confidence"):
+            planner_value = comparison["planner"][metric]
+            baseline_value = comparison["baseline_average"][metric]
+            delta = comparison["delta_vs_baseline_avg"][metric]
+            lines.append(f"| {metric} | {planner_value:.3f} | {baseline_value:.3f} | {delta:+.3f} |")
+
     lines.extend([
         "",
         "## Queries",
