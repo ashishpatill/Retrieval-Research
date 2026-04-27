@@ -1,0 +1,10 @@
+{
+  "document_id": "replace-with-document-id",
+  "queries": [
+    {
+      "query": "What retrieval pipeline features are included?",
+      "expected_terms": ["canonical", "BM25", "query traces"],
+      "expected_pages": [1]
+    }
+  ]
+}

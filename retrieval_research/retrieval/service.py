@@ -1,0 +1,143 @@
+from __future__ import annotations
+
+from typing import List, Tuple
+
+from retrieval_research.retrieval.bm25 import BM25Index
+from retrieval_research.retrieval.colpali import DEFAULT_COLPALI_MODEL, ColPaliPageIndex
+from retrieval_research.retrieval.dense import DenseIndex
+from retrieval_research.retrieval.hybrid import reciprocal_rank_fusion
+from retrieval_research.retrieval.planner import plan_query
+from retrieval_research.retrieval.visual import VisualPageIndex, load_visual_index
+from retrieval_research.schema import Evidence
+from retrieval_research.storage import ArtifactStore
+
+
+RETRIEVAL_MODES = ("bm25", "dense", "hybrid", "visual", "planner")
+
+
+def build_indexes(
+    store: ArtifactStore,
+    document_id: str,
+    mode: str = "all",
+    visual_backend: str = "baseline",
+    colpali_model: str = DEFAULT_COLPALI_MODEL,
+    device: str = "auto",
+) -> List[str]:
+    chunks = store.load_chunks(document_id)
+    saved = []
+    if mode in {"all", "bm25", "hybrid", "planner"}:
+        bm25 = BM25Index(chunks)
+        saved.append(str(store.save_index(document_id, "bm25", bm25.to_dict())))
+    if mode in {"all", "dense", "hybrid", "planner"}:
+        dense = DenseIndex(chunks)
+        saved.append(str(store.save_index(document_id, "dense", dense.to_dict())))
+    if mode in {"all", "visual", "planner"}:
+        document = store.load_document(document_id)
+        if visual_backend == "colpali":
+            visual = ColPaliPageIndex.build(document, model_name=colpali_model, device=device)
+        else:
+            visual = VisualPageIndex(document)
+        saved.append(str(store.save_index(document_id, "visual", visual.to_dict())))
+    return saved
+
+
+def search_document(
+    store: ArtifactStore,
+    document_id: str,
+    query: str,
+    mode: str = "hybrid",
+    top_k: int = 5,
+) -> Tuple[List[Evidence], List[dict]]:
+    steps = []
+    if mode == "bm25":
+        index = BM25Index.from_dict(store.load_index(document_id, "bm25"))
+        hits = index.search(query, top_k=top_k)
+        steps.append({"path": "bm25", "document_id": document_id, "hits": len(hits)})
+        return hits, steps
+
+    if mode == "dense":
+        index = DenseIndex.from_dict(store.load_index(document_id, "dense"))
+        hits = index.search(query, top_k=top_k)
+        steps.append({"path": "dense", "document_id": document_id, "hits": len(hits)})
+        return hits, steps
+
+    if mode == "hybrid":
+        bm25 = BM25Index.from_dict(store.load_index(document_id, "bm25"))
+        dense = DenseIndex.from_dict(store.load_index(document_id, "dense"))
+        bm25_hits = bm25.search(query, top_k=max(top_k, 10))
+        dense_hits = dense.search(query, top_k=max(top_k, 10))
+        hits = reciprocal_rank_fusion(bm25_hits, dense_hits, top_k=top_k)
+        steps.extend(
+            [
+                {"path": "bm25", "document_id": document_id, "hits": len(bm25_hits)},
+                {"path": "dense", "document_id": document_id, "hits": len(dense_hits)},
+                {"path": "hybrid", "document_id": document_id, "hits": len(hits), "fusion": "reciprocal_rank"},
+            ]
+        )
+        return hits, steps
+
+    if mode == "visual":
+        index = load_visual_index(store.load_index(document_id, "visual"))
+        hits = index.search(query, top_k=top_k)
+        steps.append({"path": "visual", "document_id": document_id, "hits": len(hits)})
+        return hits, steps
+
+    if mode == "planner":
+        plan = plan_query(query)
+        all_hits: List[Evidence] = []
+        steps.append({"path": "planner", "document_id": document_id, **plan.to_dict()})
+        for route in plan.routes:
+            try:
+                hits, route_steps = search_document(store, document_id, query, mode=route, top_k=max(top_k, 10))
+            except FileNotFoundError:
+                steps.append({"path": route, "document_id": document_id, "hits": 0, "error": "missing_index"})
+                continue
+            all_hits.extend(hits)
+            steps.extend(route_steps)
+        if not all_hits:
+            return [], steps
+        seen = {}
+        for item in all_hits:
+            current = seen.get(item.chunk_id)
+            if current is None or item.score > current.score:
+                seen[item.chunk_id] = item
+        ranked = sorted(seen.values(), key=lambda item: item.score, reverse=True)
+        planner_hits = []
+        for item in ranked[:top_k]:
+            planner_hits.append(
+                Evidence(
+                    chunk_id=item.chunk_id,
+                    document_id=item.document_id,
+                    page_numbers=item.page_numbers,
+                    text=item.text,
+                    score=item.score,
+                    retrieval_path=f"planner:{item.retrieval_path}",
+                    metadata={**item.metadata, "query_type": plan.query_type, "planner_reason": plan.reason},
+                )
+            )
+        steps.append({"path": "planner_merge", "document_id": document_id, "hits": len(planner_hits)})
+        return planner_hits, steps
+
+    raise ValueError(f"Unsupported retrieval mode: {mode}")
+
+
+def search_corpus(
+    store: ArtifactStore,
+    document_ids: List[str],
+    query: str,
+    mode: str = "hybrid",
+    top_k: int = 5,
+) -> Tuple[List[Evidence], List[dict]]:
+    evidence: List[Evidence] = []
+    steps: List[dict] = []
+    for document_id in document_ids:
+        try:
+            hits, doc_steps = search_document(store, document_id, query, mode=mode, top_k=top_k)
+        except FileNotFoundError:
+            steps.append({"path": mode, "document_id": document_id, "hits": 0, "error": "missing_index"})
+            continue
+        evidence.extend(hits)
+        steps.extend(doc_steps)
+
+    evidence.sort(key=lambda item: item.score, reverse=True)
+    return evidence[:top_k], steps
