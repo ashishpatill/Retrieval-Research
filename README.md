@@ -1,17 +1,23 @@
 # 🧠 Retrieval-Research
+
 Ideating, experimenting, optimising and testing Retrieval
 
 **State-of-the-Art 2026 Document Parser** — GLM-OCR (local) + Gemini 3.1 Pro Preview (`gemini-3.1-pro-preview`)
 
 Features:
+
 - Batch processing (100+ pages)
 - Streamlit + Gradio interfaces
 - Pure Local / Pure Gemini / Hybrid mode
 - History + ZIP export
 - v0.1 retrieval pipeline: canonical artifacts, page-aware chunks, BM25 indexing, query traces
 - Custom Next.js inspector UI (documents, query workbench, eval dashboard) via FastAPI
+- Planner v1 routing with route settings, evidence consolidation, and trace diagnostics
+- Graph retrieval mode for section/context neighborhood expansion
+- Eval reports with planner-vs-static comparison metrics
 
 ## Quick Start
+
 ```bash
 ollama pull glm-ocr
 pip install -r requirements.txt
@@ -53,6 +59,15 @@ python3 -m retrieval_research.cli query "retrieval pipeline" --mode planner
 python3 -m retrieval_research.cli eval datasets/manifests/readme_eval.example.json
 ```
 
+Supported retrieval query modes:
+
+- `bm25`
+- `dense`
+- `hybrid`
+- `visual`
+- `graph`
+- `planner`
+
 For PDFs/images with OCR:
 
 ```bash
@@ -72,6 +87,7 @@ The default visual backend remains `baseline` so the project runs without GPU/mo
 Generated query runs include:
 
 - `data/runs/<run-id>/evidence_bundle.json`
+- `data/runs/<run-id>/knowledge_card.json`
 - `data/runs/<run-id>/retrieval_trace.json`
 - `data/runs/<run-id>/eval_report.json`
 - `data/runs/<run-id>/eval_report.md`
