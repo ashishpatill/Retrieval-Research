@@ -80,6 +80,8 @@ def run_eval(
             page_hit = _hits_expected_page(evidence, expected_pages)
             rr = _reciprocal_rank(evidence, expected_terms, expected_pages)
             citation_supported = _has_supported_citations(knowledge_card)
+            answerable = bool(knowledge_card.get("answerable"))
+            confidence = float(knowledge_card.get("confidence", 0.0))
             results.append(
                 {
                     "query": case["query"],
@@ -88,6 +90,8 @@ def run_eval(
                     "term_hit": term_hit,
                     "page_hit": page_hit,
                     "citation_supported": citation_supported,
+                    "answerable": answerable,
+                    "confidence": confidence,
                     "reciprocal_rank": rr,
                     "top_score": evidence[0].score if evidence else 0.0,
                     "knowledge_card": knowledge_card,
@@ -104,6 +108,8 @@ def run_eval(
             "term_hit_rate": sum(1 for item in mode_results if item["term_hit"]) / total,
             "page_hit_rate": sum(1 for item in mode_results if item["page_hit"]) / total,
             "citation_support_rate": sum(1 for item in mode_results if item["citation_supported"]) / total,
+            "answerable_rate": sum(1 for item in mode_results if item["answerable"]) / total,
+            "avg_confidence": sum(item["confidence"] for item in mode_results) / total,
             "mrr": sum(item["reciprocal_rank"] for item in mode_results) / total,
             "query_count": len(mode_results),
         }
@@ -130,14 +136,15 @@ def report_to_markdown(report: Dict[str, Any]) -> str:
         "",
         "## Mode Metrics",
         "",
-        "| Mode | Queries | Term hit rate | Page hit rate | Citation support | MRR |",
-        "|---|---:|---:|---:|---:|---:|",
+        "| Mode | Queries | Term hit rate | Page hit rate | Citation support | Answerable | Avg confidence | MRR |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for mode, mode_metrics in metrics["modes"].items():
         lines.append(
             f"| {mode} | {mode_metrics['query_count']} | "
             f"{mode_metrics['term_hit_rate']:.3f} | {mode_metrics['page_hit_rate']:.3f} | "
-            f"{mode_metrics['citation_support_rate']:.3f} | {mode_metrics['mrr']:.3f} |"
+            f"{mode_metrics['citation_support_rate']:.3f} | {mode_metrics['answerable_rate']:.3f} | "
+            f"{mode_metrics['avg_confidence']:.3f} | {mode_metrics['mrr']:.3f} |"
         )
     lines.extend([
         "",
@@ -152,6 +159,8 @@ def report_to_markdown(report: Dict[str, Any]) -> str:
                 f"- Term hit: {item['term_hit']}",
                 f"- Page hit: {item['page_hit']}",
                 f"- Citation supported: {item['citation_supported']}",
+                f"- Answerable: {item['answerable']}",
+                f"- Confidence: {item['confidence']:.3f}",
                 f"- Reciprocal rank: {item['reciprocal_rank']:.3f}",
                 f"- Top score: {item['top_score']:.3f}",
             ]
