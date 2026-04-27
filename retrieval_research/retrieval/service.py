@@ -6,6 +6,7 @@ from typing import List, Tuple
 from retrieval_research.retrieval.bm25 import BM25Index
 from retrieval_research.retrieval.colpali import DEFAULT_COLPALI_MODEL, ColPaliPageIndex
 from retrieval_research.retrieval.dense import DenseIndex
+from retrieval_research.retrieval.graph import GraphIndex
 from retrieval_research.retrieval.hybrid import reciprocal_rank_fusion
 from retrieval_research.retrieval.planner import plan_query
 from retrieval_research.retrieval.visual import VisualPageIndex, load_visual_index
@@ -13,7 +14,7 @@ from retrieval_research.schema import Evidence
 from retrieval_research.storage import ArtifactStore
 
 
-RETRIEVAL_MODES = ("bm25", "dense", "hybrid", "visual", "planner")
+RETRIEVAL_MODES = ("bm25", "dense", "hybrid", "visual", "graph", "planner")
 
 TOKEN_RE = re.compile(r"[a-z0-9_]+")
 
@@ -127,6 +128,9 @@ def build_indexes(
         else:
             visual = VisualPageIndex(document)
         saved.append(str(store.save_index(document_id, "visual", visual.to_dict())))
+    if mode in {"all", "graph", "planner"}:
+        graph = GraphIndex(chunks)
+        saved.append(str(store.save_index(document_id, "graph", graph.to_dict())))
     return saved
 
 
@@ -169,6 +173,12 @@ def search_document(
         index = load_visual_index(store.load_index(document_id, "visual"))
         hits = index.search(query, top_k=top_k)
         steps.append({"path": "visual", "document_id": document_id, "hits": len(hits)})
+        return hits, steps
+
+    if mode == "graph":
+        index = GraphIndex.from_dict(store.load_index(document_id, "graph"))
+        hits = index.search(query, top_k=top_k)
+        steps.append({"path": "graph", "document_id": document_id, "hits": len(hits), "expansion": "chunk_graph"})
         return hits, steps
 
     if mode == "planner":
