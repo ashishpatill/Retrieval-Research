@@ -33,6 +33,7 @@ class V01PipelineTest(unittest.TestCase):
             store = ArtifactStore(str(root / "data"))
             document = ingest_path(str(source), store=store)
             loaded = store.load_document(document.id)
+            profile = store.load_document_profile(document.id)
             chunks = chunk_document(loaded, max_words=20, overlap_words=2)
             store.save_chunks(document.id, chunks)
             index = BM25Index(chunks)
@@ -62,13 +63,23 @@ class V01PipelineTest(unittest.TestCase):
                 encoding="utf-8",
             )
             report = run_eval(str(manifest), store=store, top_k=3)
+            store.save_run("eval_run", "eval_report.json", report)
+            store.save_run("query_run", "retrieval_trace.json", {"steps": []})
+            runs = store.list_runs()
+            loaded_report = store.load_run("eval_run", "eval_report.json")
 
             self.assertEqual(loaded.id, document.id)
+            self.assertEqual(profile.document_id, document.id)
+            self.assertEqual(profile.page_count, 1)
+            self.assertGreater(profile.total_words, 0)
+            self.assertIn("Retrieval Notes", profile.headings)
             self.assertGreaterEqual(len(chunks), 1)
             self.assertGreaterEqual(len(hits), 1)
             self.assertGreaterEqual(len(dense_hits), 1)
             self.assertGreaterEqual(len(hybrid_hits), 1)
             self.assertTrue(knowledge_card.answerable)
+            self.assertGreater(knowledge_card.confidence, 0.0)
+            self.assertIn("Evidence confidence", knowledge_card.answerability_reason)
             self.assertIn(hybrid_hits[0].chunk_id, knowledge_card.answer)
             self.assertEqual(knowledge_card.claims[0].citation_ids, ["C1"])
             self.assertGreaterEqual(len(visual_hits), 1)
@@ -81,7 +92,10 @@ class V01PipelineTest(unittest.TestCase):
             self.assertEqual(report["metrics"]["modes"]["bm25"]["query_count"], 1)
             self.assertEqual(report["metrics"]["modes"]["hybrid"]["term_hit_rate"], 1.0)
             self.assertEqual(report["metrics"]["modes"]["hybrid"]["citation_support_rate"], 1.0)
+            self.assertEqual(report["metrics"]["modes"]["hybrid"]["answerable_rate"], 1.0)
             self.assertIn("knowledge_card", report["results"][0])
+            self.assertEqual(loaded_report["top_k"], 3)
+            self.assertIn("eval_report.json", next(run["files"] for run in runs if run["id"] == "eval_run"))
 
     def test_colpali_optional_dependency_message(self):
         try:
