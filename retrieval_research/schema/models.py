@@ -67,6 +67,30 @@ class Document:
 
 
 @dataclass
+class DocumentProfile:
+    document_id: str
+    title: str
+    source_type: str
+    page_count: int
+    text_page_count: int
+    image_page_count: int
+    total_words: int
+    page_types: Dict[str, int]
+    headings: List[str] = field(default_factory=list)
+    topics: List[str] = field(default_factory=list)
+    entities: List[str] = field(default_factory=list)
+    extraction_confidence: Dict[str, Any] = field(default_factory=dict)
+    created_at: str = field(default_factory=utc_now)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "DocumentProfile":
+        return cls(**data)
+
+
+@dataclass
 class Chunk:
     id: str
     document_id: str
@@ -128,6 +152,8 @@ class KnowledgeCard:
     answerable: bool
     citations: List[Citation]
     claims: List[Claim]
+    confidence: float = 0.0
+    answerability_reason: str = ""
     unresolved_ambiguity: List[str] = field(default_factory=list)
     created_at: str = field(default_factory=utc_now)
 
