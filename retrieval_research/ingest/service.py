@@ -8,6 +8,7 @@ from typing import List, Optional
 
 from PIL import Image
 
+from retrieval_research.profiling import build_document_profile
 from retrieval_research.schema import Document, Page
 from retrieval_research.storage import ArtifactStore
 
@@ -153,4 +154,5 @@ def ingest_path(
         raise ValueError(f"Unsupported input type: {suffix or source.name}")
 
     store.save_document(document)
+    store.save_document_profile(build_document_profile(document))
     return document

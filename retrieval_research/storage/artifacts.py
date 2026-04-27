@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
-from retrieval_research.schema import Chunk, Document
+from retrieval_research.schema import Chunk, Document, DocumentProfile
 
 
 class ArtifactStore:
@@ -58,6 +58,14 @@ class ArtifactStore:
     def load_document(self, document_id: str) -> Document:
         return Document.from_dict(self.load_json(self.document_dir(document_id) / "document.json"))
 
+    def save_document_profile(self, profile: DocumentProfile) -> Path:
+        path = self.document_dir(profile.document_id) / "document_profile.json"
+        self.save_json(path, profile.to_dict())
+        return path
+
+    def load_document_profile(self, document_id: str) -> DocumentProfile:
+        return DocumentProfile.from_dict(self.load_json(self.document_dir(document_id) / "document_profile.json"))
+
     def list_documents(self) -> List[Document]:
         documents = []
         for path in sorted(self.processed_dir.glob("*/document.json")):
@@ -89,3 +97,15 @@ class ArtifactStore:
         path = self.runs_dir / run_id / name
         self.save_json(path, payload)
         return path
+
+    def load_run(self, run_id: str, name: str) -> Dict[str, Any]:
+        return self.load_json(self.runs_dir / run_id / name)
+
+    def list_runs(self) -> List[Dict[str, Any]]:
+        runs = []
+        for path in sorted(self.runs_dir.iterdir(), reverse=True):
+            if not path.is_dir():
+                continue
+            files = sorted(item.name for item in path.iterdir() if item.is_file())
+            runs.append({"id": path.name, "path": str(path), "files": files})
+        return runs
