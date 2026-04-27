@@ -176,11 +176,24 @@ def search_document(
         all_hits: List[Evidence] = []
         steps.append({"path": "planner", "document_id": document_id, **plan.to_dict()})
         for route in plan.routes:
+            route_settings = plan.route_settings.get(route, {})
+            factor = float(route_settings.get("top_k_factor", 2.0))
+            route_top_k = max(top_k, int(round(top_k * factor)))
             try:
-                hits, route_steps = search_document(store, document_id, query, mode=route, top_k=max(top_k, 10))
+                hits, route_steps = search_document(store, document_id, query, mode=route, top_k=route_top_k)
             except FileNotFoundError:
                 steps.append({"path": route, "document_id": document_id, "hits": 0, "error": "missing_index"})
                 continue
+            steps.append(
+                {
+                    "path": "planner_route",
+                    "document_id": document_id,
+                    "route": route,
+                    "requested_top_k": top_k,
+                    "route_top_k": route_top_k,
+                    "settings": route_settings,
+                }
+            )
             all_hits.extend(hits)
             steps.extend(route_steps)
         if not all_hits:
@@ -188,7 +201,16 @@ def search_document(
         planner_hits, merge_stats = _consolidate_planner_hits(
             all_hits, top_k=top_k, query_type=plan.query_type, planner_reason=plan.reason
         )
-        steps.append({"path": "planner_merge", "document_id": document_id, "hits": len(planner_hits), **merge_stats})
+        steps.append(
+            {
+                "path": "planner_merge",
+                "document_id": document_id,
+                "hits": len(planner_hits),
+                "requested_top_k": top_k,
+                "merge_strategy": plan.merge_strategy,
+                **merge_stats,
+            }
+        )
         return planner_hits, steps
 
     raise ValueError(f"Unsupported retrieval mode: {mode}")
