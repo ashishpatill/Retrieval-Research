@@ -7,3 +7,6 @@ python-dotenv
 google-genai
 tqdm
 opencv-python
+fastapi
+uvicorn
+python-multipart
