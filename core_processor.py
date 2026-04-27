@@ -7,9 +7,6 @@ from PIL import Image
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from mlx_vlm import load, generate
-from mlx_vlm.prompt_utils import apply_chat_template
-from mlx_vlm.utils import load_config
 
 load_dotenv()
 gemini_key = os.getenv("GEMINI_API_KEY")
@@ -20,11 +17,29 @@ MLX_MODEL_PATH = "mlx-community/GLM-OCR-6bit"
 OCR_MIN_DIM = 1200
 OCR_MAX_DIM = 2400
 
-# Load MLX model once at startup (downloads on first run ~1.4 GB)
-print(f"Loading {MLX_MODEL_PATH} via MLX...")
-_mlx_model, _mlx_processor = load(MLX_MODEL_PATH)
-_mlx_config = load_config(MLX_MODEL_PATH)
-print("MLX model ready.")
+_mlx_model = None
+_mlx_processor = None
+_mlx_config = None
+_mlx_generate = None
+_mlx_apply_chat_template = None
+
+
+def _get_mlx_model():
+    global _mlx_model, _mlx_processor, _mlx_config, _mlx_generate, _mlx_apply_chat_template
+    if _mlx_model is None or _mlx_processor is None or _mlx_config is None:
+        from mlx_vlm import generate, load
+        from mlx_vlm.prompt_utils import apply_chat_template
+        from mlx_vlm.utils import load_config
+
+        # Downloads on first run. Keep this lazy so CLI/schema tests and cloud-only
+        # flows do not pay the local model startup cost at import time.
+        print(f"Loading {MLX_MODEL_PATH} via MLX...")
+        _mlx_model, _mlx_processor = load(MLX_MODEL_PATH)
+        _mlx_config = load_config(MLX_MODEL_PATH)
+        _mlx_generate = generate
+        _mlx_apply_chat_template = apply_chat_template
+        print("MLX model ready.")
+    return _mlx_model, _mlx_processor, _mlx_config, _mlx_generate, _mlx_apply_chat_template
 
 
 def _order_points(pts: np.ndarray) -> np.ndarray:
@@ -87,12 +102,13 @@ def _resize_for_ocr(img: Image.Image) -> Image.Image:
 
 
 def _glm_ocr_mlx(img: Image.Image, system_prompt: str, user_query: str) -> str:
+    model, processor, config, generate, apply_chat_template = _get_mlx_model()
     prompt = apply_chat_template(
-        _mlx_processor, _mlx_config,
+        processor, config,
         system_prompt + "\n\n" + user_query,
         num_images=1,
     )
-    result = generate(_mlx_model, _mlx_processor, prompt, img, max_tokens=4096, verbose=False)
+    result = generate(model, processor, prompt, img, max_tokens=4096, verbose=False)
     return result.text if hasattr(result, "text") else str(result)
 
 
