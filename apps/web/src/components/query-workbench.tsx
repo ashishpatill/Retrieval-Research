@@ -79,6 +79,7 @@ export function QueryWorkbench() {
             <option value="bm25">bm25</option>
             <option value="dense">dense</option>
             <option value="visual">visual</option>
+            <option value="graph">graph</option>
           </select>
           <input
             type="number"

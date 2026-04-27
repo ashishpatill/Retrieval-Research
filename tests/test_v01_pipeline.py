@@ -44,8 +44,11 @@ class V01PipelineTest(unittest.TestCase):
             hybrid_hits, hybrid_steps = search_document(store, document.id, "keyword retrieval", mode="hybrid", top_k=3)
             knowledge_card = build_knowledge_card("keyword retrieval", hybrid_hits)
             visual_hits, visual_steps = search_document(store, document.id, "figure on the page", mode="visual", top_k=3)
+            graph_hits, graph_steps = search_document(store, document.id, "related keyword retrieval context", mode="graph", top_k=3)
             planner_hits, planner_steps = search_document(store, document.id, "figure on the page", mode="planner", top_k=3)
+            graph_plan_hits, graph_plan_steps = search_document(store, document.id, "related keyword retrieval context", mode="planner", top_k=3)
             plan = plan_query("figure on the page")
+            graph_plan = plan_query("related keyword retrieval context")
             manifest = root / "manifest.json"
             manifest.write_text(
                 json.dumps(
@@ -83,10 +86,16 @@ class V01PipelineTest(unittest.TestCase):
             self.assertIn(hybrid_hits[0].chunk_id, knowledge_card.answer)
             self.assertEqual(knowledge_card.claims[0].citation_ids, ["C1"])
             self.assertGreaterEqual(len(visual_hits), 1)
+            self.assertGreaterEqual(len(graph_hits), 1)
             self.assertGreaterEqual(len(planner_hits), 1)
+            self.assertGreaterEqual(len(graph_plan_hits), 1)
             self.assertEqual(hybrid_steps[-1]["path"], "hybrid")
             self.assertEqual(visual_steps[-1]["path"], "visual")
+            self.assertEqual(graph_steps[-1]["path"], "graph")
+            self.assertIn("graph_relations", graph_hits[0].metadata)
             self.assertEqual(plan.query_type, "visual")
+            self.assertIn("graph", graph_plan.routes)
+            self.assertTrue(any(step.get("route") == "graph" for step in graph_plan_steps if step["path"] == "planner_route"))
             self.assertEqual(planner_steps[0]["path"], "planner")
             self.assertIn("route_settings", planner_steps[0])
             planner_route_steps = [step for step in planner_steps if step["path"] == "planner_route"]
@@ -104,6 +113,10 @@ class V01PipelineTest(unittest.TestCase):
             self.assertEqual(report["metrics"]["modes"]["hybrid"]["term_hit_rate"], 1.0)
             self.assertEqual(report["metrics"]["modes"]["hybrid"]["citation_support_rate"], 1.0)
             self.assertEqual(report["metrics"]["modes"]["hybrid"]["answerable_rate"], 1.0)
+            planner_vs_static = report["metrics"]["planner_vs_static"]
+            self.assertTrue(planner_vs_static["available"])
+            self.assertIn("hybrid", planner_vs_static["baseline_modes"])
+            self.assertIn("delta_vs_baseline_avg", planner_vs_static)
             self.assertIn("knowledge_card", report["results"][0])
             self.assertEqual(loaded_report["top_k"], 3)
             self.assertIn("eval_report.json", next(run["files"] for run in runs if run["id"] == "eval_run"))

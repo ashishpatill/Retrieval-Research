@@ -8,6 +8,7 @@ from typing import Dict, List
 TABLE_TERMS = {"table", "row", "column", "cell", "invoice", "form", "total", "amount"}
 VISUAL_TERMS = {"figure", "diagram", "chart", "image", "visual", "layout", "page", "scan", "handwriting"}
 MULTIHOP_TERMS = {"compare", "contrast", "relationship", "across", "between", "summarize", "synthesis"}
+GRAPH_TERMS = {"section", "reference", "entity", "topic", "related", "neighbor", "context"}
 
 
 @dataclass
@@ -33,6 +34,7 @@ def _settings_for(query_type: str, routes: List[str]) -> Dict[str, dict]:
         "bm25": {"top_k_factor": 2.0},
         "dense": {"top_k_factor": 2.0},
         "visual": {"top_k_factor": 2.0},
+        "graph": {"top_k_factor": 2.0, "expansion": "chunk_graph"},
         "hybrid": {"top_k_factor": 2.0, "fusion": "reciprocal_rank"},
     }
     settings = {route: dict(base.get(route, {"top_k_factor": 2.0})) for route in routes}
@@ -68,12 +70,12 @@ def plan_query(query: str) -> QueryPlan:
             route_settings=_settings_for("table_or_form", routes),
             merge_strategy="score_max",
         )
-    if terms & MULTIHOP_TERMS:
-        routes = ["hybrid", "dense"]
+    if terms & (MULTIHOP_TERMS | GRAPH_TERMS):
+        routes = ["hybrid", "dense", "graph"]
         return QueryPlan(
-            query_type="multi_hop",
+            query_type="multi_hop" if terms & MULTIHOP_TERMS else "graph_expansion",
             routes=routes,
-            reason="synthesis or comparison terms detected",
+            reason="synthesis, graph, or neighborhood terms detected",
             route_settings=_settings_for("multi_hop", routes),
             merge_strategy="score_max",
         )
