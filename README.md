@@ -9,6 +9,7 @@ Features:
 - Pure Local / Pure Gemini / Hybrid mode
 - History + ZIP export
 - v0.1 retrieval pipeline: canonical artifacts, page-aware chunks, BM25 indexing, query traces
+- Custom Next.js inspector UI (documents, query workbench, eval dashboard) via FastAPI
 
 ## Quick Start
 ```bash
@@ -19,6 +20,26 @@ streamlit run streamlit_app.py
 # or
 python gradio_app.py
 ```
+
+## Custom UI (Next.js + FastAPI)
+
+The custom UI is now the primary direction. Streamlit and Gradio remain available during migration.
+
+Backend API:
+
+```bash
+python3 -m uvicorn retrieval_research.api:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Frontend app:
+
+```bash
+cd apps/web
+npm install
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000 npm run dev
+```
+
+Open `http://localhost:3000` for the custom UI.
 
 ## Retrieval v0.1 CLI
 
