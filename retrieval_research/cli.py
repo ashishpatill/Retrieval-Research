@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from retrieval_research.chunking import chunk_document
-from retrieval_research.evidence import build_extractive_answer
+from retrieval_research.evidence import build_knowledge_card
 from retrieval_research.evaluation.runner import report_to_markdown, run_eval
 from retrieval_research.ingest import ingest_path
 from retrieval_research.retrieval import DEFAULT_COLPALI_MODEL, RETRIEVAL_MODES, build_indexes, search_corpus
@@ -70,8 +70,13 @@ def cmd_query(args: argparse.Namespace) -> None:
     store = _store(args)
     document_ids = _candidate_documents(store, args.document_id)
     evidence, steps = search_corpus(store, document_ids, args.question, mode=args.mode, top_k=args.top_k)
-    answer = build_extractive_answer(args.question, evidence)
-    result = RetrievalResult(query=args.question, evidence=evidence, answer=answer)
+    knowledge_card = build_knowledge_card(args.question, evidence)
+    result = RetrievalResult(
+        query=args.question,
+        evidence=evidence,
+        answer=knowledge_card.answer,
+        knowledge_card=knowledge_card,
+    )
     trace = RetrievalTrace(
         query=args.question,
         mode=args.mode,
@@ -80,8 +85,9 @@ def cmd_query(args: argparse.Namespace) -> None:
     )
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     store.save_run(run_id, "evidence_bundle.json", result.to_dict())
+    store.save_run(run_id, "knowledge_card.json", knowledge_card.to_dict())
     store.save_run(run_id, "retrieval_trace.json", trace.to_dict())
-    print(answer)
+    print(knowledge_card.answer)
     print("")
     print(f"run: {Path(args.store) / 'runs' / run_id}")
 

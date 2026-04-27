@@ -10,7 +10,7 @@ from datetime import datetime
 import zipfile
 from dotenv import load_dotenv
 from retrieval_research.chunking import chunk_document
-from retrieval_research.evidence import build_extractive_answer
+from retrieval_research.evidence import build_knowledge_card
 from retrieval_research.retrieval import build_indexes, search_document
 from retrieval_research.storage import ArtifactStore
 
@@ -246,8 +246,11 @@ else:
     if query:
         try:
             evidence, steps = search_document(store, selected_doc.id, query, mode=retrieval_mode, top_k=top_k)
+            knowledge_card = build_knowledge_card(query, evidence)
             st.markdown("### Answer")
-            st.text(build_extractive_answer(query, evidence))
+            st.text(knowledge_card.answer)
+            with st.expander("Knowledge card"):
+                st.json(knowledge_card.to_dict())
             with st.expander("Retrieval trace"):
                 st.json({"mode": retrieval_mode, "steps": steps})
             st.markdown("### Evidence")
