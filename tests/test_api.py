@@ -1,0 +1,93 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+try:
+    from fastapi.testclient import TestClient
+except Exception:  # pragma: no cover
+    TestClient = None
+
+from retrieval_research.api import create_app
+from retrieval_research.chunking import chunk_document
+from retrieval_research.ingest import ingest_path
+from retrieval_research.storage import ArtifactStore
+
+
+@unittest.skipIf(TestClient is None, "fastapi test client unavailable")
+class ApiTest(unittest.TestCase):
+    def test_document_and_query_endpoints(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "api_sample.md"
+            source.write_text(
+                "# API Retrieval\n\nThis corpus contains keyword retrieval and semantic retrieval text.\n",
+                encoding="utf-8",
+            )
+            app = create_app(store_root=str(root / "data"))
+            client = TestClient(app)
+            store = ArtifactStore(str(root / "data"))
+
+            document = ingest_path(str(source), store=store)
+            chunks = chunk_document(document, max_words=30, overlap_words=5)
+            store.save_chunks(document.id, chunks)
+
+            documents_res = client.get("/api/documents")
+            self.assertEqual(documents_res.status_code, 200)
+            self.assertEqual(documents_res.json()["documents"][0]["id"], document.id)
+
+            detail_res = client.get(f"/api/documents/{document.id}")
+            self.assertEqual(detail_res.status_code, 200)
+            self.assertEqual(detail_res.json()["stats"]["chunk_count"], len(chunks))
+
+            index_res = client.post(
+                f"/api/documents/{document.id}/index",
+                json={"mode": "all", "visual_backend": "baseline"},
+            )
+            self.assertEqual(index_res.status_code, 200)
+
+            query_res = client.post(
+                "/api/query",
+                json={"question": "keyword retrieval", "document_id": document.id, "mode": "hybrid", "top_k": 3},
+            )
+            self.assertEqual(query_res.status_code, 200)
+            payload = query_res.json()
+            self.assertIn("run_id", payload)
+            self.assertTrue(payload["result"]["knowledge_card"]["answerable"])
+
+            runs_res = client.get("/api/runs")
+            self.assertEqual(runs_res.status_code, 200)
+            run_id = payload["run_id"]
+            self.assertIn(run_id, [run["id"] for run in runs_res.json()["runs"]])
+
+            run_detail = client.get(f"/api/runs/{run_id}")
+            self.assertEqual(run_detail.status_code, 200)
+            self.assertIn("evidence_bundle.json", run_detail.json()["files"])
+
+            eval_manifest = {
+                "document_id": document.id,
+                "queries": [{"query": "keyword retrieval", "expected_terms": ["keyword"], "expected_pages": [1]}],
+            }
+            eval_res = client.post("/api/eval", json={"manifest": eval_manifest, "top_k": 3, "modes": ["hybrid"]})
+            self.assertEqual(eval_res.status_code, 200)
+            self.assertEqual(eval_res.json()["report"]["metrics"]["modes"]["hybrid"]["query_count"], 1)
+
+    def test_ingest_upload_endpoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = create_app(store_root=str(root / "data"))
+            client = TestClient(app)
+
+            upload_res = client.post(
+                "/api/documents/ingest",
+                files={"file": ("upload.md", b"# Upload\n\nUpload endpoint body.", "text/markdown")},
+                data={"ocr": "false", "mode": "Hybrid", "dpi": "150"},
+            )
+            self.assertEqual(upload_res.status_code, 200)
+            document_id = upload_res.json()["document_id"]
+
+            detail_res = client.get(f"/api/documents/{document_id}")
+            self.assertEqual(detail_res.status_code, 200)
+
+
+if __name__ == "__main__":
+    unittest.main()
