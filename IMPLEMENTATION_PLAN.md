@@ -33,12 +33,12 @@ Completed:
 
 In progress / remaining for near-term roadmap:
 
-- [ ] Phase 4 completion:
+- Phase 4 completion:
   - Broaden visual retrieval quality and benchmark on image/table-heavy corpora.
-- [ ] Phase 5 completion:
+- Phase 5 completion:
   - Compare planner-routed retrieval against static modes with explicit benchmark reports.
   - Improve merge strategy controls (e.g., alternative merge policies and rerank toggles).
-- [ ] Phase 6 start:
+- Phase 6 start:
   - Graph-style retrieval path (section/entity/reference traversal).
   - Richer `knowledge_card.json` fields for unresolved ambiguity and follow-up retrieval suggestions.
 
