@@ -99,10 +99,48 @@ class Evidence:
 
 
 @dataclass
+class Citation:
+    id: str
+    document_id: str
+    chunk_id: str
+    page_numbers: List[int]
+    retrieval_path: str
+    score: float
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class Claim:
+    text: str
+    citation_ids: List[str]
+    confidence: float
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class KnowledgeCard:
+    query: str
+    answer: str
+    answerable: bool
+    citations: List[Citation]
+    claims: List[Claim]
+    unresolved_ambiguity: List[str] = field(default_factory=list)
+    created_at: str = field(default_factory=utc_now)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class RetrievalResult:
     query: str
     evidence: List[Evidence]
     answer: str = ""
+    knowledge_card: Optional[KnowledgeCard] = None
     created_at: str = field(default_factory=utc_now)
 
     def to_dict(self) -> Dict[str, Any]:

@@ -1,8 +1,11 @@
 from .models import (
     Block,
+    Citation,
     Chunk,
+    Claim,
     Document,
     Evidence,
+    KnowledgeCard,
     Page,
     RetrievalResult,
     RetrievalTrace,
@@ -10,9 +13,12 @@ from .models import (
 
 __all__ = [
     "Block",
+    "Citation",
     "Chunk",
+    "Claim",
     "Document",
     "Evidence",
+    "KnowledgeCard",
     "Page",
     "RetrievalResult",
     "RetrievalTrace",
