@@ -30,23 +30,26 @@ Completed:
   - Route-specific planner settings (top-k factors and merge strategy) recorded in traces.
   - Evidence consolidation with redundancy/conflict annotations in `planner_merge`.
   - Confidence + answerability estimates added to knowledge cards and eval outputs.
+  - Planner-vs-static comparison summary added to eval JSON/Markdown output.
+- Phase 6 structured knowledge layer (initial progress):
+  - First graph-style retrieval path (`graph`) added with chunk-neighborhood expansion.
+  - Planner can route graph-intent queries through graph retrieval.
 
 In progress / remaining for near-term roadmap:
 
 - Phase 4 completion:
   - Broaden visual retrieval quality and benchmark on image/table-heavy corpora.
 - Phase 5 completion:
-  - Compare planner-routed retrieval against static modes with explicit benchmark reports.
   - Improve merge strategy controls (e.g., alternative merge policies and rerank toggles).
 - Phase 6 start:
-  - Graph-style retrieval path (section/entity/reference traversal).
+  - Expand graph retrieval beyond chunk adjacency into explicit section/entity/reference traversal.
   - Richer `knowledge_card.json` fields for unresolved ambiguity and follow-up retrieval suggestions.
 
 Next session start point:
 
-1. Add planner-vs-static comparison report generation in eval output (phase 5 remaining).
-2. Add a first graph retrieval stub/path to begin phase 6.
-3. Expose these new outputs in `/evals` and `/query` custom UI pages.
+1. Add graph construction from explicit section/entity/reference links (not only chunk neighborhood).
+2. Add graph retrieval diagnostics to custom UI query/eval pages.
+3. Add unresolved ambiguity and follow-up retrieval suggestion fields in `knowledge_card.json`.
 
 ## Current baseline
 
