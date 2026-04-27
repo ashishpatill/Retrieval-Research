@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import List, Tuple
 
 from retrieval_research.retrieval.bm25 import BM25Index
@@ -13,6 +14,94 @@ from retrieval_research.storage import ArtifactStore
 
 
 RETRIEVAL_MODES = ("bm25", "dense", "hybrid", "visual", "planner")
+
+TOKEN_RE = re.compile(r"[a-z0-9_]+")
+
+
+def _tokens(text: str) -> set[str]:
+    return set(TOKEN_RE.findall(text.lower()))
+
+
+def _text_overlap(left: str, right: str) -> float:
+    left_tokens = _tokens(left)
+    right_tokens = _tokens(right)
+    if not left_tokens or not right_tokens:
+        return 0.0
+    inter = len(left_tokens & right_tokens)
+    union = len(left_tokens | right_tokens)
+    return inter / union if union else 0.0
+
+
+def _has_negation(text: str) -> bool:
+    terms = {"not", "no", "without", "never", "none"}
+    return bool(_tokens(text) & terms)
+
+
+def _consolidate_planner_hits(hits: List[Evidence], top_k: int, query_type: str, planner_reason: str) -> tuple[List[Evidence], dict]:
+    by_chunk: dict[str, Evidence] = {}
+    chunk_routes: dict[str, set[str]] = {}
+    for item in hits:
+        current = by_chunk.get(item.chunk_id)
+        if current is None or item.score > current.score:
+            by_chunk[item.chunk_id] = item
+        chunk_routes.setdefault(item.chunk_id, set()).add(item.retrieval_path)
+
+    ranked = sorted(by_chunk.values(), key=lambda item: item.score, reverse=True)
+    selected = ranked[: max(top_k, 8)]
+    redundancies = []
+    conflicts = []
+
+    # Detect near-duplicate evidence across chunk IDs on the same page.
+    for idx, item in enumerate(selected):
+        for other in selected[idx + 1 :]:
+            if item.chunk_id == other.chunk_id:
+                continue
+            if not (set(item.page_numbers) & set(other.page_numbers)):
+                continue
+            overlap = _text_overlap(item.text, other.text)
+            if overlap >= 0.72:
+                redundancies.append((item.chunk_id, other.chunk_id, overlap))
+            elif overlap >= 0.28 and _has_negation(item.text) != _has_negation(other.text):
+                conflicts.append((item.chunk_id, other.chunk_id, overlap))
+
+    redundant_ids = {pair[1] for pair in sorted(redundancies, key=lambda value: value[2], reverse=True)}
+    kept = [item for item in ranked if item.chunk_id not in redundant_ids][:top_k]
+
+    planner_hits = []
+    for item in kept:
+        planner_hits.append(
+            Evidence(
+                chunk_id=item.chunk_id,
+                document_id=item.document_id,
+                page_numbers=item.page_numbers,
+                text=item.text,
+                score=item.score,
+                retrieval_path=f"planner:{item.retrieval_path}",
+                metadata={
+                    **item.metadata,
+                    "query_type": query_type,
+                    "planner_reason": planner_reason,
+                    "source_paths": sorted(chunk_routes.get(item.chunk_id, set())),
+                },
+            )
+        )
+
+    merge_stats = {
+        "input_hits": len(hits),
+        "unique_chunks": len(by_chunk),
+        "kept_hits": len(planner_hits),
+        "redundancy_groups": len(redundancies),
+        "conflicts_detected": len(conflicts),
+        "redundancies": [
+            {"kept_chunk": kept_id, "dropped_chunk": dropped_id, "overlap": round(overlap, 3)}
+            for kept_id, dropped_id, overlap in redundancies[:8]
+        ],
+        "conflicts": [
+            {"left_chunk": left_id, "right_chunk": right_id, "overlap": round(overlap, 3)}
+            for left_id, right_id, overlap in conflicts[:8]
+        ],
+    }
+    return planner_hits, merge_stats
 
 
 def build_indexes(
@@ -96,26 +185,10 @@ def search_document(
             steps.extend(route_steps)
         if not all_hits:
             return [], steps
-        seen = {}
-        for item in all_hits:
-            current = seen.get(item.chunk_id)
-            if current is None or item.score > current.score:
-                seen[item.chunk_id] = item
-        ranked = sorted(seen.values(), key=lambda item: item.score, reverse=True)
-        planner_hits = []
-        for item in ranked[:top_k]:
-            planner_hits.append(
-                Evidence(
-                    chunk_id=item.chunk_id,
-                    document_id=item.document_id,
-                    page_numbers=item.page_numbers,
-                    text=item.text,
-                    score=item.score,
-                    retrieval_path=f"planner:{item.retrieval_path}",
-                    metadata={**item.metadata, "query_type": plan.query_type, "planner_reason": plan.reason},
-                )
-            )
-        steps.append({"path": "planner_merge", "document_id": document_id, "hits": len(planner_hits)})
+        planner_hits, merge_stats = _consolidate_planner_hits(
+            all_hits, top_k=top_k, query_type=plan.query_type, planner_reason=plan.reason
+        )
+        steps.append({"path": "planner_merge", "document_id": document_id, "hits": len(planner_hits), **merge_stats})
         return planner_hits, steps
 
     raise ValueError(f"Unsupported retrieval mode: {mode}")
