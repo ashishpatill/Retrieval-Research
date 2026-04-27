@@ -9,6 +9,10 @@ import os
 from datetime import datetime
 import zipfile
 from dotenv import load_dotenv
+from retrieval_research.chunking import chunk_document
+from retrieval_research.evidence import build_extractive_answer
+from retrieval_research.retrieval import build_indexes, search_document
+from retrieval_research.storage import ArtifactStore
 
 load_dotenv()
 gemini_key = os.getenv("GEMINI_API_KEY")
@@ -160,9 +164,96 @@ else:
                         c1, c2 = st.columns(2)
                         with c1:
                             st.caption("GLM-OCR Raw")
-                            st.text_area("", value=pg.get("glm", ""), height=400, key=f"glm_{file_data['filename']}_{pg['page']}", label_visibility="collapsed")
+                            st.text_area("GLM raw text", value=pg.get("glm", ""), height=400, key=f"glm_{file_data['filename']}_{pg['page']}", label_visibility="collapsed")
                         with c2:
                             st.caption("Gemini Final")
-                            st.text_area("", value=pg.get("final", ""), height=400, key=f"final_{file_data['filename']}_{pg['page']}", label_visibility="collapsed")
+                            st.text_area("Gemini final text", value=pg.get("final", ""), height=400, key=f"final_{file_data['filename']}_{pg['page']}", label_visibility="collapsed")
                 else:
                     st.markdown(pg.get("final", ""), unsafe_allow_html=False)
+
+# ── Retrieval Inspector ─────────────────────────────────────────────────────
+st.divider()
+st.header("🔎 Retrieval Inspector")
+
+store = ArtifactStore("data")
+documents = store.list_documents()
+
+if not documents:
+    st.info("No indexed documents yet. Use `python3 -m retrieval_research.cli ingest <path>` to add one.")
+else:
+    doc_options = {f"{doc.title} ({doc.id})": doc for doc in documents}
+    selected_label = st.selectbox("Document", list(doc_options.keys()))
+    selected_doc = doc_options[selected_label]
+
+    metric_col1, metric_col2, metric_col3, metric_col4, metric_col5 = st.columns(5)
+    with metric_col1:
+        st.metric("Pages", len(selected_doc.pages))
+    with metric_col2:
+        try:
+            chunks = store.load_chunks(selected_doc.id)
+        except FileNotFoundError:
+            chunks = []
+        st.metric("Chunks", len(chunks))
+    with metric_col3:
+        try:
+            store.load_index(selected_doc.id, "bm25")
+            bm25_ready = True
+        except FileNotFoundError:
+            bm25_ready = False
+        st.metric("BM25 Index", "Ready" if bm25_ready else "Missing")
+    with metric_col4:
+        try:
+            store.load_index(selected_doc.id, "dense")
+            dense_ready = True
+        except FileNotFoundError:
+            dense_ready = False
+        st.metric("Dense Index", "Ready" if dense_ready else "Missing")
+    with metric_col5:
+        try:
+            store.load_index(selected_doc.id, "visual")
+            visual_ready = True
+        except FileNotFoundError:
+            visual_ready = False
+        st.metric("Visual Index", "Ready" if visual_ready else "Missing")
+
+    action_col1, action_col2 = st.columns(2)
+    with action_col1:
+        if st.button("Build chunks", use_container_width=True):
+            chunks = chunk_document(selected_doc)
+            store.save_chunks(selected_doc.id, chunks)
+            st.success(f"Saved {len(chunks)} chunks.")
+            st.rerun()
+    with action_col2:
+        visual_backend = st.selectbox("Visual backend", ["baseline", "colpali"])
+        colpali_model = st.text_input("ColPali model", value="vidore/colpali-v1.2")
+        if st.button("Build indexes", use_container_width=True):
+            try:
+                paths = build_indexes(
+                    store,
+                    selected_doc.id,
+                    mode="all",
+                    visual_backend=visual_backend,
+                    colpali_model=colpali_model,
+                )
+                st.success(f"Saved {len(paths)} indexes.")
+                st.rerun()
+            except RuntimeError as exc:
+                st.error(str(exc))
+
+    query = st.text_input("Ask a question about this document")
+    retrieval_mode = st.radio("Retrieval mode", ["planner", "hybrid", "bm25", "dense", "visual"], horizontal=True)
+    top_k = st.slider("Top K", min_value=1, max_value=10, value=5)
+    if query:
+        try:
+            evidence, steps = search_document(store, selected_doc.id, query, mode=retrieval_mode, top_k=top_k)
+            st.markdown("### Answer")
+            st.text(build_extractive_answer(query, evidence))
+            with st.expander("Retrieval trace"):
+                st.json({"mode": retrieval_mode, "steps": steps})
+            st.markdown("### Evidence")
+            for item in evidence:
+                label = f"{item.chunk_id} | {item.retrieval_path} | score {item.score:.3f} | pages {item.page_numbers}"
+                with st.expander(label):
+                    st.write(item.text)
+        except FileNotFoundError:
+            st.warning("Build chunks and indexes before querying this document.")
