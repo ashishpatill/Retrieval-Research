@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 
 from retrieval_research.chunking import chunk_document
+from retrieval_research.evidence import build_knowledge_card
 from retrieval_research.evaluation import run_eval
+from retrieval_research.evaluation.runner import _has_supported_citations
 from retrieval_research.ingest import ingest_path
 from retrieval_research.retrieval import (
     BM25Index,
@@ -39,6 +41,7 @@ class V01PipelineTest(unittest.TestCase):
             hits = index.search("keyword retrieval", top_k=3)
             dense_hits = dense_index.search("semantic matches", top_k=3)
             hybrid_hits, hybrid_steps = search_document(store, document.id, "keyword retrieval", mode="hybrid", top_k=3)
+            knowledge_card = build_knowledge_card("keyword retrieval", hybrid_hits)
             visual_hits, visual_steps = search_document(store, document.id, "figure on the page", mode="visual", top_k=3)
             planner_hits, planner_steps = search_document(store, document.id, "figure on the page", mode="planner", top_k=3)
             plan = plan_query("figure on the page")
@@ -65,6 +68,9 @@ class V01PipelineTest(unittest.TestCase):
             self.assertGreaterEqual(len(hits), 1)
             self.assertGreaterEqual(len(dense_hits), 1)
             self.assertGreaterEqual(len(hybrid_hits), 1)
+            self.assertTrue(knowledge_card.answerable)
+            self.assertIn(hybrid_hits[0].chunk_id, knowledge_card.answer)
+            self.assertEqual(knowledge_card.claims[0].citation_ids, ["C1"])
             self.assertGreaterEqual(len(visual_hits), 1)
             self.assertGreaterEqual(len(planner_hits), 1)
             self.assertEqual(hybrid_steps[-1]["path"], "hybrid")
@@ -74,12 +80,23 @@ class V01PipelineTest(unittest.TestCase):
             self.assertEqual(hits[0].document_id, document.id)
             self.assertEqual(report["metrics"]["modes"]["bm25"]["query_count"], 1)
             self.assertEqual(report["metrics"]["modes"]["hybrid"]["term_hit_rate"], 1.0)
+            self.assertEqual(report["metrics"]["modes"]["hybrid"]["citation_support_rate"], 1.0)
+            self.assertIn("knowledge_card", report["results"][0])
 
     def test_colpali_optional_dependency_message(self):
         try:
             _load_runtime()
         except ColPaliUnavailableError as exc:
             self.assertIn("colpali-engine", str(exc))
+
+    def test_empty_claim_citations_are_not_supported(self):
+        card = {
+            "answerable": True,
+            "citations": [{"id": "C1"}],
+            "claims": [{"text": "unsupported claim", "citation_ids": []}],
+        }
+
+        self.assertFalse(_has_supported_citations(card))
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from retrieval_research.evidence import build_knowledge_card
 from retrieval_research.retrieval import RETRIEVAL_MODES, search_document
 from retrieval_research.schema import Evidence
 from retrieval_research.storage import ArtifactStore
@@ -31,6 +32,18 @@ def _reciprocal_rank(evidence: List[Evidence], expected_terms: List[str], expect
         if term_hit or page_hit:
             return 1.0 / idx
     return 0.0
+
+
+def _has_supported_citations(card: Dict[str, Any]) -> bool:
+    if not card.get("answerable"):
+        return False
+    citation_ids = {citation["id"] for citation in card.get("citations", [])}
+    if not citation_ids:
+        return False
+    return all(
+        bool(claim.get("citation_ids")) and set(claim.get("citation_ids")) <= citation_ids
+        for claim in card.get("claims", [])
+    )
 
 
 def _load_manifest(path: str) -> Dict[str, Any]:
@@ -60,11 +73,13 @@ def run_eval(
 
         for mode in modes:
             evidence, steps = search_document(store, document_id, case["query"], mode=mode, top_k=top_k)
+            knowledge_card = build_knowledge_card(case["query"], evidence).to_dict()
             expected_terms = case.get("expected_terms", [])
             expected_pages = case.get("expected_pages", [])
             term_hit = _contains_expected_terms(evidence, expected_terms)
             page_hit = _hits_expected_page(evidence, expected_pages)
             rr = _reciprocal_rank(evidence, expected_terms, expected_pages)
+            citation_supported = _has_supported_citations(knowledge_card)
             results.append(
                 {
                     "query": case["query"],
@@ -72,8 +87,10 @@ def run_eval(
                     "mode": mode,
                     "term_hit": term_hit,
                     "page_hit": page_hit,
+                    "citation_supported": citation_supported,
                     "reciprocal_rank": rr,
                     "top_score": evidence[0].score if evidence else 0.0,
+                    "knowledge_card": knowledge_card,
                     "steps": steps,
                     "hits": [item.to_dict() for item in evidence],
                 }
@@ -86,6 +103,7 @@ def run_eval(
         metrics_by_mode[mode] = {
             "term_hit_rate": sum(1 for item in mode_results if item["term_hit"]) / total,
             "page_hit_rate": sum(1 for item in mode_results if item["page_hit"]) / total,
+            "citation_support_rate": sum(1 for item in mode_results if item["citation_supported"]) / total,
             "mrr": sum(item["reciprocal_rank"] for item in mode_results) / total,
             "query_count": len(mode_results),
         }
@@ -112,13 +130,14 @@ def report_to_markdown(report: Dict[str, Any]) -> str:
         "",
         "## Mode Metrics",
         "",
-        "| Mode | Queries | Term hit rate | Page hit rate | MRR |",
-        "|---|---:|---:|---:|---:|",
+        "| Mode | Queries | Term hit rate | Page hit rate | Citation support | MRR |",
+        "|---|---:|---:|---:|---:|---:|",
     ]
     for mode, mode_metrics in metrics["modes"].items():
         lines.append(
             f"| {mode} | {mode_metrics['query_count']} | "
-            f"{mode_metrics['term_hit_rate']:.3f} | {mode_metrics['page_hit_rate']:.3f} | {mode_metrics['mrr']:.3f} |"
+            f"{mode_metrics['term_hit_rate']:.3f} | {mode_metrics['page_hit_rate']:.3f} | "
+            f"{mode_metrics['citation_support_rate']:.3f} | {mode_metrics['mrr']:.3f} |"
         )
     lines.extend([
         "",
@@ -132,6 +151,7 @@ def report_to_markdown(report: Dict[str, Any]) -> str:
                 "",
                 f"- Term hit: {item['term_hit']}",
                 f"- Page hit: {item['page_hit']}",
+                f"- Citation supported: {item['citation_supported']}",
                 f"- Reciprocal rank: {item['reciprocal_rank']:.3f}",
                 f"- Top score: {item['top_score']:.3f}",
             ]
