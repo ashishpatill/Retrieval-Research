@@ -2,6 +2,52 @@
 
 This plan turns `retrieval_roadmap.md` into an implementation sequence for the project. It intentionally ignores the research paper roadmap for now and focuses on shipping a usable retrieval/document-intelligence system from the current codebase.
 
+## Progress status (session checkpoint)
+
+Last updated: 2026-04-28
+
+Current milestone: **v0.3 (in progress)**
+
+Completed:
+
+- Phase 0 foundation:
+  - Canonical schema + artifact store under `data/`.
+  - Ingestion pipeline and CLI entrypoints.
+  - Package structure + smoke tests.
+- Phase 1 text retrieval baseline:
+  - Page-aware chunking.
+  - BM25 + dense retrieval + hybrid fusion.
+  - Query traces and evidence bundles.
+- Phase 2 evaluation harness:
+  - Eval manifest execution via CLI/API.
+  - Mode metrics, citation support, answerability and confidence reporting.
+- Phase 3 inspector UI:
+  - Custom Next.js UI scaffold in `apps/web`.
+  - Document library, document detail workspace, query workbench, eval page.
+  - FastAPI backend surface in `retrieval_research/api.py`.
+- Phase 5 planner and adaptive routing (partial):
+  - Query classifier and rule-based route selection.
+  - Route-specific planner settings (top-k factors and merge strategy) recorded in traces.
+  - Evidence consolidation with redundancy/conflict annotations in `planner_merge`.
+  - Confidence + answerability estimates added to knowledge cards and eval outputs.
+
+In progress / remaining for near-term roadmap:
+
+- [ ] Phase 4 completion:
+  - Broaden visual retrieval quality and benchmark on image/table-heavy corpora.
+- [ ] Phase 5 completion:
+  - Compare planner-routed retrieval against static modes with explicit benchmark reports.
+  - Improve merge strategy controls (e.g., alternative merge policies and rerank toggles).
+- [ ] Phase 6 start:
+  - Graph-style retrieval path (section/entity/reference traversal).
+  - Richer `knowledge_card.json` fields for unresolved ambiguity and follow-up retrieval suggestions.
+
+Next session start point:
+
+1. Add planner-vs-static comparison report generation in eval output (phase 5 remaining).
+2. Add a first graph retrieval stub/path to begin phase 6.
+3. Expose these new outputs in `/evals` and `/query` custom UI pages.
+
 ## Current baseline
 
 The repository currently contains a working document parsing prototype:
