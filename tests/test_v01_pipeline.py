@@ -12,11 +12,13 @@ from retrieval_research.retrieval import (
     BM25Index,
     ColPaliUnavailableError,
     DenseIndex,
+    LateInteractionIndex,
     build_indexes,
     plan_query,
     search_document,
 )
 from retrieval_research.retrieval.colpali import _load_runtime
+from retrieval_research.retrieval.compression import dequantize_int8, quantize_int8
 from retrieval_research.storage import ArtifactStore
 
 
@@ -38,10 +40,13 @@ class V01PipelineTest(unittest.TestCase):
             store.save_chunks(document.id, chunks)
             index = BM25Index(chunks)
             dense_index = DenseIndex(chunks)
+            late_index = LateInteractionIndex(chunks)
             build_indexes(store, document.id, mode="all")
             hits = index.search("keyword retrieval", top_k=3)
             dense_hits = dense_index.search("semantic matches", top_k=3)
+            late_hits = late_index.search("exact keyword retrieval", top_k=3)
             hybrid_hits, hybrid_steps = search_document(store, document.id, "keyword retrieval", mode="hybrid", top_k=3)
+            service_late_hits, service_late_steps = search_document(store, document.id, "exact keyword retrieval", mode="late", top_k=3)
             knowledge_card = build_knowledge_card("keyword retrieval", hybrid_hits)
             visual_hits, visual_steps = search_document(store, document.id, "figure on the page", mode="visual", top_k=3)
             graph_hits, graph_steps = search_document(store, document.id, "related keyword retrieval context", mode="graph", top_k=3)
@@ -79,6 +84,8 @@ class V01PipelineTest(unittest.TestCase):
             self.assertGreaterEqual(len(chunks), 1)
             self.assertGreaterEqual(len(hits), 1)
             self.assertGreaterEqual(len(dense_hits), 1)
+            self.assertGreaterEqual(len(late_hits), 1)
+            self.assertGreaterEqual(len(service_late_hits), 1)
             self.assertGreaterEqual(len(hybrid_hits), 1)
             self.assertTrue(knowledge_card.answerable)
             self.assertGreater(knowledge_card.confidence, 0.0)
@@ -90,6 +97,7 @@ class V01PipelineTest(unittest.TestCase):
             self.assertGreaterEqual(len(planner_hits), 1)
             self.assertGreaterEqual(len(graph_plan_hits), 1)
             self.assertEqual(hybrid_steps[-1]["path"], "hybrid")
+            self.assertEqual(service_late_steps[-1]["path"], "late")
             self.assertEqual(visual_steps[-1]["path"], "visual")
             self.assertEqual(graph_steps[-1]["path"], "graph")
             self.assertIn("graph_relations", graph_hits[0].metadata)
@@ -135,6 +143,16 @@ class V01PipelineTest(unittest.TestCase):
         }
 
         self.assertFalse(_has_supported_citations(card))
+
+    def test_int8_embedding_compression_roundtrip(self):
+        embedding = [[0.0, 0.5, -1.0], [1.0, -0.25, 0.125]]
+        compressed = quantize_int8(embedding)
+        restored = dequantize_int8(compressed)
+
+        self.assertEqual(compressed["compression"], "int8")
+        self.assertEqual(len(restored), 2)
+        self.assertAlmostEqual(restored[0][1], 0.5, places=2)
+        self.assertAlmostEqual(restored[0][2], -1.0, places=2)
 
 
 if __name__ == "__main__":
