@@ -65,10 +65,17 @@ Supported retrieval query modes:
 
 - `bm25`
 - `dense`
+- `late`
 - `hybrid`
 - `visual`
 - `graph`
 - `planner`
+
+Quick sanity check after indexing:
+
+```bash
+python3 -m retrieval_research.cli query "what is this document about?" --mode planner --top-k 3
+```
 
 For PDFs/images with OCR:
 
