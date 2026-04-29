@@ -136,9 +136,10 @@ def create_app(store_root: str = "data") -> FastAPI:
             content = await file.read()
             temp.write(content)
             temp_path = temp.name
-
-        document = ingest_path(temp_path, store=_store(), run_ocr=ocr, mode=mode, dpi=dpi)
-        Path(temp_path).unlink(missing_ok=True)
+        try:
+            document = ingest_path(temp_path, store=_store(), run_ocr=ocr, mode=mode, dpi=dpi)
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
         return {"document_id": document.id, "document": document.to_dict()}
 
     @app.post("/api/documents/{document_id}/chunk")
