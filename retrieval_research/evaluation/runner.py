@@ -70,7 +70,7 @@ def _planner_static_comparison(metrics_by_mode: Dict[str, Dict[str, float]]) -> 
 
     return {
         "available": True,
-        "baseline_modes": list(baselines.keys()),
+        "baseline_modes": sorted(baselines.keys()),
         "baseline_average": baseline_avg,
         "planner": {key: planner[key] for key in baseline_keys},
         "delta_vs_baseline_avg": delta,
