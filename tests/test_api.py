@@ -167,6 +167,19 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(index_res.status_code, 400)
             self.assertIn("Unsupported index mode", index_res.json()["detail"])
 
+    def test_query_endpoint_rejects_unknown_document(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = create_app(store_root=str(root / "data"))
+            client = TestClient(app)
+
+            query_res = client.post(
+                "/api/query",
+                json={"question": "test", "mode": "hybrid", "document_id": "missing-doc"},
+            )
+            self.assertEqual(query_res.status_code, 404)
+            self.assertIn("Document not found", query_res.json()["detail"])
+
 
 if __name__ == "__main__":
     unittest.main()
