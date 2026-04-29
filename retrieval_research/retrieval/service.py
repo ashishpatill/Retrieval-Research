@@ -8,13 +8,14 @@ from retrieval_research.retrieval.colpali import DEFAULT_COLPALI_MODEL, ColPaliP
 from retrieval_research.retrieval.dense import DenseIndex
 from retrieval_research.retrieval.graph import GraphIndex
 from retrieval_research.retrieval.hybrid import reciprocal_rank_fusion
+from retrieval_research.retrieval.late import LateInteractionIndex
 from retrieval_research.retrieval.planner import plan_query
 from retrieval_research.retrieval.visual import VisualPageIndex, load_visual_index
 from retrieval_research.schema import Evidence
 from retrieval_research.storage import ArtifactStore
 
 
-RETRIEVAL_MODES = ("bm25", "dense", "hybrid", "visual", "graph", "planner")
+RETRIEVAL_MODES = ("bm25", "dense", "late", "hybrid", "visual", "graph", "planner")
 
 TOKEN_RE = re.compile(r"[a-z0-9_]+")
 
@@ -111,6 +112,7 @@ def build_indexes(
     mode: str = "all",
     visual_backend: str = "baseline",
     colpali_model: str = DEFAULT_COLPALI_MODEL,
+    visual_compression: str = "none",
     device: str = "auto",
 ) -> List[str]:
     chunks = store.load_chunks(document_id)
@@ -121,10 +123,18 @@ def build_indexes(
     if mode in {"all", "dense", "hybrid", "planner"}:
         dense = DenseIndex(chunks)
         saved.append(str(store.save_index(document_id, "dense", dense.to_dict())))
+    if mode in {"all", "late", "planner"}:
+        late = LateInteractionIndex(chunks)
+        saved.append(str(store.save_index(document_id, "late", late.to_dict())))
     if mode in {"all", "visual", "planner"}:
         document = store.load_document(document_id)
         if visual_backend == "colpali":
-            visual = ColPaliPageIndex.build(document, model_name=colpali_model, device=device)
+            visual = ColPaliPageIndex.build(
+                document,
+                model_name=colpali_model,
+                compression=visual_compression,
+                device=device,
+            )
         else:
             visual = VisualPageIndex(document)
         saved.append(str(store.save_index(document_id, "visual", visual.to_dict())))
@@ -152,6 +162,12 @@ def search_document(
         index = DenseIndex.from_dict(store.load_index(document_id, "dense"))
         hits = index.search(query, top_k=top_k)
         steps.append({"path": "dense", "document_id": document_id, "hits": len(hits)})
+        return hits, steps
+
+    if mode == "late":
+        index = LateInteractionIndex.from_dict(store.load_index(document_id, "late"))
+        hits = index.search(query, top_k=top_k)
+        steps.append({"path": "late", "document_id": document_id, "hits": len(hits), "scorer": "maxsim"})
         return hits, steps
 
     if mode == "hybrid":
