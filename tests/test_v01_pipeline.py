@@ -154,6 +154,15 @@ class V01PipelineTest(unittest.TestCase):
         self.assertAlmostEqual(restored[0][1], 0.5, places=2)
         self.assertAlmostEqual(restored[0][2], -1.0, places=2)
 
+    def test_planner_routes_plot_and_spreadsheet_queries(self):
+        visual_plan = plan_query("show me the plot in this screenshot")
+        table_plan = plan_query("find the spreadsheet total amount")
+
+        self.assertEqual(visual_plan.query_type, "visual")
+        self.assertIn("visual", visual_plan.routes)
+        self.assertEqual(table_plan.query_type, "table_or_form")
+        self.assertIn("late", table_plan.routes)
+
 
 if __name__ == "__main__":
     unittest.main()
