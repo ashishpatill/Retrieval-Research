@@ -59,6 +59,8 @@ python3 -m retrieval_research.cli query "retrieval pipeline" --mode planner
 python3 -m retrieval_research.cli eval datasets/manifests/readme_eval.example.json
 ```
 
+Retrieval modes now include `bm25`, `dense`, `late`, `hybrid`, `visual`, `graph`, and `planner`. The `late` mode is a dependency-free ColBERT-style MaxSim baseline.
+
 Supported retrieval query modes:
 
 - `bm25`
@@ -78,11 +80,11 @@ For real visual page retrieval with ColPali, install the optional runtime and re
 
 ```bash
 pip install colpali-engine torch
-python3 -m retrieval_research.cli index <document-id> --mode visual --visual-backend colpali --device auto
+python3 -m retrieval_research.cli index <document-id> --mode visual --visual-backend colpali --visual-compression int8 --device auto
 python3 -m retrieval_research.cli query "what does the diagram show?" --document-id <document-id> --mode visual
 ```
 
-The default visual backend remains `baseline` so the project runs without GPU/model downloads.
+The default visual backend remains `baseline` so the project runs without GPU/model downloads. `--visual-compression int8` enables the first HPC-ColPali-style storage optimization path for ColPali page embeddings.
 
 Generated query runs include:
 
