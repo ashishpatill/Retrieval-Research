@@ -185,7 +185,7 @@ else:
     selected_label = st.selectbox("Document", list(doc_options.keys()))
     selected_doc = doc_options[selected_label]
 
-    metric_col1, metric_col2, metric_col3, metric_col4, metric_col5 = st.columns(5)
+    metric_col1, metric_col2, metric_col3, metric_col4, metric_col5, metric_col6 = st.columns(6)
     with metric_col1:
         st.metric("Pages", len(selected_doc.pages))
     with metric_col2:
@@ -210,6 +210,13 @@ else:
         st.metric("Dense Index", "Ready" if dense_ready else "Missing")
     with metric_col5:
         try:
+            store.load_index(selected_doc.id, "late")
+            late_ready = True
+        except FileNotFoundError:
+            late_ready = False
+        st.metric("Late Index", "Ready" if late_ready else "Missing")
+    with metric_col6:
+        try:
             store.load_index(selected_doc.id, "visual")
             visual_ready = True
         except FileNotFoundError:
@@ -225,6 +232,7 @@ else:
             st.rerun()
     with action_col2:
         visual_backend = st.selectbox("Visual backend", ["baseline", "colpali"])
+        visual_compression = st.selectbox("Visual compression", ["none", "int8"])
         colpali_model = st.text_input("ColPali model", value="vidore/colpali-v1.2")
         if st.button("Build indexes", use_container_width=True):
             try:
@@ -234,14 +242,15 @@ else:
                     mode="all",
                     visual_backend=visual_backend,
                     colpali_model=colpali_model,
+                    visual_compression=visual_compression,
                 )
                 st.success(f"Saved {len(paths)} indexes.")
                 st.rerun()
-            except RuntimeError as exc:
+            except (RuntimeError, ValueError) as exc:
                 st.error(str(exc))
 
     query = st.text_input("Ask a question about this document")
-    retrieval_mode = st.radio("Retrieval mode", ["planner", "hybrid", "bm25", "dense", "visual"], horizontal=True)
+    retrieval_mode = st.radio("Retrieval mode", ["planner", "hybrid", "bm25", "dense", "late", "visual", "graph"], horizontal=True)
     top_k = st.slider("Top K", min_value=1, max_value=10, value=5)
     if query:
         try:
