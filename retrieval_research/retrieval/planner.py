@@ -33,6 +33,7 @@ def _settings_for(query_type: str, routes: List[str]) -> Dict[str, dict]:
     base = {
         "bm25": {"top_k_factor": 2.0},
         "dense": {"top_k_factor": 2.0},
+        "late": {"top_k_factor": 2.0, "scorer": "maxsim"},
         "visual": {"top_k_factor": 2.0},
         "graph": {"top_k_factor": 2.0, "expansion": "chunk_graph"},
         "hybrid": {"top_k_factor": 2.0, "fusion": "reciprocal_rank"},
@@ -62,7 +63,7 @@ def plan_query(query: str) -> QueryPlan:
             merge_strategy="score_max",
         )
     if terms & TABLE_TERMS:
-        routes = ["bm25", "hybrid"]
+        routes = ["bm25", "late", "hybrid"]
         return QueryPlan(
             query_type="table_or_form",
             routes=routes,
@@ -71,7 +72,7 @@ def plan_query(query: str) -> QueryPlan:
             merge_strategy="score_max",
         )
     if terms & (MULTIHOP_TERMS | GRAPH_TERMS):
-        routes = ["hybrid", "dense", "graph"]
+        routes = ["hybrid", "dense", "late", "graph"]
         return QueryPlan(
             query_type="multi_hop" if terms & MULTIHOP_TERMS else "graph_expansion",
             routes=routes,
@@ -80,7 +81,7 @@ def plan_query(query: str) -> QueryPlan:
             merge_strategy="score_max",
         )
     if re.search(r"\b[A-Z]{2,}[-_ ]?\d+\b", query) or re.search(r"\d", query):
-        routes = ["bm25", "hybrid"]
+        routes = ["bm25", "late", "hybrid"]
         return QueryPlan(
             query_type="exact_lookup",
             routes=routes,
