@@ -60,7 +60,7 @@ def create_app(store_root: str = "data") -> FastAPI:
 
     @app.get("/api/health")
     def health() -> Dict[str, str]:
-        return {"status": "ok"}
+        return {"status": "ok", "service": "retrieval-research-api", "version": "0.1.0"}
 
     @app.get("/api/documents")
     def list_documents() -> Dict[str, Any]:
