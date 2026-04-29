@@ -121,6 +121,7 @@ class V01PipelineTest(unittest.TestCase):
             self.assertEqual(report["metrics"]["modes"]["hybrid"]["term_hit_rate"], 1.0)
             self.assertEqual(report["metrics"]["modes"]["hybrid"]["citation_support_rate"], 1.0)
             self.assertEqual(report["metrics"]["modes"]["hybrid"]["answerable_rate"], 1.0)
+            self.assertEqual(list(report["metrics"]["modes"].keys()), sorted(report["metrics"]["modes"].keys()))
             planner_vs_static = report["metrics"]["planner_vs_static"]
             self.assertTrue(planner_vs_static["available"])
             self.assertIn("hybrid", planner_vs_static["baseline_modes"])
