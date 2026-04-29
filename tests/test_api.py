@@ -88,6 +88,31 @@ class ApiTest(unittest.TestCase):
             detail_res = client.get(f"/api/documents/{document_id}")
             self.assertEqual(detail_res.status_code, 200)
 
+    def test_query_endpoint_rejects_invalid_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = create_app(store_root=str(root / "data"))
+            client = TestClient(app)
+
+            query_res = client.post(
+                "/api/query",
+                json={"question": "test", "mode": "unknown_mode"},
+            )
+            self.assertEqual(query_res.status_code, 400)
+            self.assertIn("Unsupported retrieval mode", query_res.json()["detail"])
+
+    def test_query_endpoint_validates_top_k(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = create_app(store_root=str(root / "data"))
+            client = TestClient(app)
+
+            query_res = client.post(
+                "/api/query",
+                json={"question": "test", "mode": "hybrid", "top_k": 0},
+            )
+            self.assertEqual(query_res.status_code, 422)
+
 
 if __name__ == "__main__":
     unittest.main()
