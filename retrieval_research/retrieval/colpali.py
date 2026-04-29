@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+from retrieval_research.retrieval.compression import maybe_compress_embeddings, maybe_decompress_embedding
 from retrieval_research.schema import Document, Evidence, Page
 
 
@@ -64,6 +65,7 @@ class ColPaliPageIndex:
         embeddings: List[Any],
         model_name: str = DEFAULT_COLPALI_MODEL,
         device: str = "auto",
+        compression: str = "none",
     ):
         self.document_id = document_id
         self.title = title
@@ -71,6 +73,7 @@ class ColPaliPageIndex:
         self.embeddings = embeddings
         self.model_name = model_name
         self.device = device
+        self.compression = compression
 
     @classmethod
     def build(
@@ -78,6 +81,7 @@ class ColPaliPageIndex:
         document: Document,
         model_name: str = DEFAULT_COLPALI_MODEL,
         device: str = "auto",
+        compression: str = "none",
     ) -> "ColPaliPageIndex":
         torch, Image, ColPali, ColPaliProcessor = _load_runtime()
         resolved_device = _default_device(torch) if device == "auto" else device
@@ -98,13 +102,15 @@ class ColPaliPageIndex:
         with torch.no_grad():
             image_embeddings = model(**batch_images)
         embeddings = [embedding.detach().cpu().float().tolist() for embedding in image_embeddings]
+        stored_embeddings = maybe_compress_embeddings(embeddings, compression=compression)
         return cls(
             document_id=document.id,
             title=document.title,
             pages=pages,
-            embeddings=embeddings,
+            embeddings=stored_embeddings,
             model_name=model_name,
             device=resolved_device,
+            compression=compression,
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -114,6 +120,7 @@ class ColPaliPageIndex:
             "title": self.title,
             "model_name": self.model_name,
             "device": self.device,
+            "embedding_compression": self.compression,
             "pages": [_page_payload(page) for page in self.pages],
             "embeddings": self.embeddings,
         }
@@ -127,6 +134,7 @@ class ColPaliPageIndex:
             embeddings=payload.get("embeddings", []),
             model_name=payload.get("model_name", DEFAULT_COLPALI_MODEL),
             device=payload.get("device", "auto"),
+            compression=payload.get("embedding_compression", "none"),
         )
 
     def search(self, query: str, top_k: int = 5) -> List[Evidence]:
@@ -143,7 +151,10 @@ class ColPaliPageIndex:
         with torch.no_grad():
             query_embedding = model(**batch_query)
 
-        page_embeddings = [torch.tensor(item, dtype=torch.float32, device=model.device) for item in self.embeddings]
+        page_embeddings = [
+            torch.tensor(maybe_decompress_embedding(item), dtype=torch.float32, device=model.device)
+            for item in self.embeddings
+        ]
         scores_tensor = processor.score_multi_vector(query_embedding, page_embeddings)[0]
         scores: List[Tuple[int, float]] = [
             (idx, float(score)) for idx, score in enumerate(scores_tensor.detach().cpu().tolist())
@@ -166,6 +177,7 @@ class ColPaliPageIndex:
                         "image_path": page.image_path,
                         "page_id": page.id,
                         "model_name": self.model_name,
+                        "embedding_compression": self.compression,
                     },
                 )
             )
