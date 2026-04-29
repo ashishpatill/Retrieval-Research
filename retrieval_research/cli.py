@@ -50,9 +50,10 @@ def cmd_index(args: argparse.Namespace) -> None:
             mode=args.mode,
             visual_backend=args.visual_backend,
             colpali_model=args.colpali_model,
+            visual_compression=args.visual_compression,
             device=args.device,
         )
-    except RuntimeError as exc:
+    except (RuntimeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         raise SystemExit(2)
     print(f"indexed chunks: {len(chunks)}")
@@ -135,8 +136,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     index = sub.add_parser("index", help="Build retrieval indexes")
     index.add_argument("document_id")
-    index.add_argument("--mode", choices=["all", "bm25", "dense", "hybrid", "visual", "graph", "planner"], default="all")
+    index.add_argument("--mode", choices=["all", "bm25", "dense", "late", "hybrid", "visual", "graph", "planner"], default="all")
     index.add_argument("--visual-backend", choices=["baseline", "colpali"], default="baseline")
+    index.add_argument("--visual-compression", choices=["none", "int8"], default="none")
     index.add_argument("--colpali-model", default=DEFAULT_COLPALI_MODEL)
     index.add_argument("--device", default="auto", help="ColPali device: auto, cpu, mps, cuda:0, etc.")
     index.set_defaults(func=cmd_index)
@@ -151,7 +153,7 @@ def build_parser() -> argparse.ArgumentParser:
     eval_parser = sub.add_parser("eval", help="Run a retrieval eval manifest")
     eval_parser.add_argument("manifest")
     eval_parser.add_argument("--top-k", type=int, default=5)
-    eval_parser.add_argument("--modes", nargs="+", choices=RETRIEVAL_MODES, default=["bm25", "dense", "hybrid", "planner"])
+    eval_parser.add_argument("--modes", nargs="+", choices=RETRIEVAL_MODES, default=["bm25", "dense", "late", "hybrid", "planner"])
     eval_parser.set_defaults(func=cmd_eval)
 
     return parser
