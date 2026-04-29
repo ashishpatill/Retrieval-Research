@@ -19,6 +19,13 @@ def _store(args: argparse.Namespace) -> ArtifactStore:
     return ArtifactStore(args.store)
 
 
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("value must be a positive integer")
+    return parsed
+
+
 def cmd_ingest(args: argparse.Namespace) -> None:
     document = ingest_path(
         args.path,
@@ -149,13 +156,13 @@ def build_parser() -> argparse.ArgumentParser:
     query = sub.add_parser("query", help="Query indexed documents")
     query.add_argument("question")
     query.add_argument("--document-id")
-    query.add_argument("--top-k", type=int, default=5)
+    query.add_argument("--top-k", type=_positive_int, default=5)
     query.add_argument("--mode", choices=RETRIEVAL_MODES, default="hybrid")
     query.set_defaults(func=cmd_query)
 
     eval_parser = sub.add_parser("eval", help="Run a retrieval eval manifest")
     eval_parser.add_argument("manifest")
-    eval_parser.add_argument("--top-k", type=int, default=5)
+    eval_parser.add_argument("--top-k", type=_positive_int, default=5)
     eval_parser.add_argument("--modes", nargs="+", choices=RETRIEVAL_MODES, default=["bm25", "dense", "late", "hybrid", "planner"])
     eval_parser.set_defaults(func=cmd_eval)
 
