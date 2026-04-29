@@ -27,6 +27,7 @@ class ChunkRequest(BaseModel):
 class IndexRequest(BaseModel):
     mode: str = "all"
     visual_backend: str = "baseline"
+    visual_compression: str = "none"
     colpali_model: str = DEFAULT_COLPALI_MODEL
     device: str = "auto"
 
@@ -159,6 +160,7 @@ def create_app(store_root: str = "data") -> FastAPI:
                 mode=payload.mode,
                 visual_backend=payload.visual_backend,
                 colpali_model=payload.colpali_model,
+                visual_compression=payload.visual_compression,
                 device=payload.device,
             )
         except FileNotFoundError as exc:
