@@ -66,7 +66,7 @@ def create_app(store_root: str = "data") -> FastAPI:
     def list_documents() -> Dict[str, Any]:
         store = _store()
         items = []
-        for document in store.list_documents():
+        for document in sorted(store.list_documents(), key=lambda item: item.created_at, reverse=True):
             try:
                 profile = store.load_document_profile(document.id).to_dict()
             except FileNotFoundError:
