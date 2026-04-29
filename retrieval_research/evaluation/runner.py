@@ -135,7 +135,7 @@ def run_eval(
             )
 
     metrics_by_mode = {}
-    for mode in modes:
+    for mode in sorted(modes):
         mode_results = [item for item in results if item["mode"] == mode]
         total = len(mode_results) or 1
         metrics_by_mode[mode] = {
