@@ -41,7 +41,7 @@ class ApiTest(unittest.TestCase):
 
             index_res = client.post(
                 f"/api/documents/{document.id}/index",
-                json={"mode": "all", "visual_backend": "baseline"},
+                json={"mode": "all", "visual_backend": "baseline", "visual_compression": "none"},
             )
             self.assertEqual(index_res.status_code, 200)
 
