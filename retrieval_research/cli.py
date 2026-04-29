@@ -136,7 +136,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     index = sub.add_parser("index", help="Build retrieval indexes")
     index.add_argument("document_id")
-    index.add_argument("--mode", choices=["all", "bm25", "dense", "late", "hybrid", "visual", "graph", "planner"], default="all")
+    index.add_argument("--mode", choices=["all", *RETRIEVAL_MODES], default="all")
     index.add_argument("--visual-backend", choices=["baseline", "colpali"], default="baseline")
     index.add_argument("--visual-compression", choices=["none", "int8"], default="none")
     index.add_argument("--colpali-model", default=DEFAULT_COLPALI_MODEL)
