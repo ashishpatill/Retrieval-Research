@@ -181,6 +181,11 @@ def create_app(store_root: str = "data") -> FastAPI:
             raise HTTPException(status_code=400, detail=f"Unsupported retrieval mode: {payload.mode}")
 
         store = _store()
+        if payload.document_id:
+            try:
+                store.load_document(payload.document_id)
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail=f"Document not found: {payload.document_id}") from exc
         document_ids = (
             [payload.document_id]
             if payload.document_id
