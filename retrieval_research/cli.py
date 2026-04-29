@@ -117,7 +117,8 @@ def cmd_eval(args: argparse.Namespace) -> None:
     md_path.write_text(report_to_markdown(report), encoding="utf-8")
     metrics = report["metrics"]
     print(f"queries: {metrics['query_count']}")
-    for mode, mode_metrics in metrics["modes"].items():
+    for mode in sorted(metrics["modes"]):
+        mode_metrics = metrics["modes"][mode]
         print(
             f"{mode}: term_hit_rate={mode_metrics['term_hit_rate']:.3f} "
             f"page_hit_rate={mode_metrics['page_hit_rate']:.3f} "
