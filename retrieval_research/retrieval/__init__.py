@@ -1,6 +1,7 @@
 from .bm25 import BM25Index
 from .dense import DenseIndex
 from .graph import GraphIndex
+from .late import LateInteractionIndex
 from .colpali import DEFAULT_COLPALI_MODEL, ColPaliPageIndex, ColPaliUnavailableError
 from .planner import QueryPlan, plan_query
 from .service import RETRIEVAL_MODES, build_indexes, search_corpus, search_document
@@ -12,6 +13,7 @@ __all__ = [
     "ColPaliUnavailableError",
     "DenseIndex",
     "GraphIndex",
+    "LateInteractionIndex",
     "DEFAULT_COLPALI_MODEL",
     "QueryPlan",
     "RETRIEVAL_MODES",
