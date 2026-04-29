@@ -16,6 +16,18 @@ from retrieval_research.storage import ArtifactStore
 
 @unittest.skipIf(TestClient is None, "fastapi test client unavailable")
 class ApiTest(unittest.TestCase):
+    def test_health_endpoint_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = create_app(store_root=str(root / "data"))
+            client = TestClient(app)
+
+            health_res = client.get("/api/health")
+            self.assertEqual(health_res.status_code, 200)
+            self.assertEqual(health_res.json()["status"], "ok")
+            self.assertEqual(health_res.json()["service"], "retrieval-research-api")
+            self.assertEqual(health_res.json()["version"], "0.1.0")
+
     def test_document_and_query_endpoints(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
