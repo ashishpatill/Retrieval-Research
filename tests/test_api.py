@@ -113,6 +113,19 @@ class ApiTest(unittest.TestCase):
             )
             self.assertEqual(query_res.status_code, 422)
 
+    def test_query_endpoint_rejects_empty_corpus(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = create_app(store_root=str(root / "data"))
+            client = TestClient(app)
+
+            query_res = client.post(
+                "/api/query",
+                json={"question": "test", "mode": "hybrid", "top_k": 3},
+            )
+            self.assertEqual(query_res.status_code, 400)
+            self.assertIn("No documents available", query_res.json()["detail"])
+
 
 if __name__ == "__main__":
     unittest.main()
