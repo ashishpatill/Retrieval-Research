@@ -148,6 +148,25 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(query_res.status_code, 400)
             self.assertIn("No documents available", query_res.json()["detail"])
 
+    def test_index_endpoint_rejects_invalid_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "index_sample.md"
+            source.write_text("# Index\n\nMode validation sample.", encoding="utf-8")
+            app = create_app(store_root=str(root / "data"))
+            client = TestClient(app)
+            store = ArtifactStore(str(root / "data"))
+
+            document = ingest_path(str(source), store=store)
+            chunk_document(document, max_words=30, overlap_words=5)
+
+            index_res = client.post(
+                f"/api/documents/{document.id}/index",
+                json={"mode": "not_a_mode"},
+            )
+            self.assertEqual(index_res.status_code, 400)
+            self.assertIn("Unsupported index mode", index_res.json()["detail"])
+
 
 if __name__ == "__main__":
     unittest.main()
