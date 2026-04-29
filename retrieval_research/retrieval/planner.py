@@ -5,8 +5,21 @@ from dataclasses import dataclass
 from typing import Dict, List
 
 
-TABLE_TERMS = {"table", "row", "column", "cell", "invoice", "form", "total", "amount"}
-VISUAL_TERMS = {"figure", "diagram", "chart", "image", "visual", "layout", "page", "scan", "handwriting"}
+TABLE_TERMS = {"table", "row", "column", "cell", "invoice", "form", "total", "amount", "spreadsheet"}
+VISUAL_TERMS = {
+    "figure",
+    "diagram",
+    "chart",
+    "plot",
+    "image",
+    "screenshot",
+    "flowchart",
+    "visual",
+    "layout",
+    "page",
+    "scan",
+    "handwriting",
+}
 MULTIHOP_TERMS = {"compare", "contrast", "relationship", "across", "between", "summarize", "synthesis"}
 GRAPH_TERMS = {"section", "reference", "entity", "topic", "related", "neighbor", "context"}
 
