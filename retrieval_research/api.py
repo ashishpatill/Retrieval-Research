@@ -117,7 +117,9 @@ def create_app(store_root: str = "data") -> FastAPI:
                 "indexes": {
                     "bm25": _index_ready("bm25"),
                     "dense": _index_ready("dense"),
+                    "late": _index_ready("late"),
                     "visual": _index_ready("visual"),
+                    "graph": _index_ready("graph"),
                 },
             },
         }
