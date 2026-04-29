@@ -20,8 +20,8 @@ from retrieval_research.storage import ArtifactStore
 
 
 class ChunkRequest(BaseModel):
-    max_words: int = 220
-    overlap_words: int = 40
+    max_words: int = Field(default=220, ge=20, le=2000)
+    overlap_words: int = Field(default=40, ge=0, le=500)
 
 
 class IndexRequest(BaseModel):
@@ -34,13 +34,13 @@ class IndexRequest(BaseModel):
 class QueryRequest(BaseModel):
     question: str = Field(min_length=1)
     document_id: Optional[str] = None
-    top_k: int = 5
+    top_k: int = Field(default=5, ge=1, le=50)
     mode: str = "hybrid"
 
 
 class EvalRequest(BaseModel):
     manifest: Dict[str, Any]
-    top_k: int = 5
+    top_k: int = Field(default=5, ge=1, le=50)
     modes: List[str] = Field(default_factory=lambda: ["bm25", "dense", "hybrid", "planner"])
 
 
