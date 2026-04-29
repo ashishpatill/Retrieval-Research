@@ -70,6 +70,9 @@ def _candidate_documents(store: ArtifactStore, document_id: Optional[str]) -> Li
 def cmd_query(args: argparse.Namespace) -> None:
     store = _store(args)
     document_ids = _candidate_documents(store, args.document_id)
+    if not document_ids:
+        print("error: no documents found in store; ingest a document or pass --document-id", file=sys.stderr)
+        raise SystemExit(2)
     evidence, steps = search_corpus(store, document_ids, args.question, mode=args.mode, top_k=args.top_k)
     knowledge_card = build_knowledge_card(args.question, evidence)
     result = RetrievalResult(
