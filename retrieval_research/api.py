@@ -156,6 +156,9 @@ def create_app(store_root: str = "data") -> FastAPI:
     @app.post("/api/documents/{document_id}/index")
     def index_endpoint(document_id: str, payload: IndexRequest) -> Dict[str, Any]:
         store = _store()
+        supported_index_modes = {"all", *RETRIEVAL_MODES}
+        if payload.mode not in supported_index_modes:
+            raise HTTPException(status_code=400, detail=f"Unsupported index mode: {payload.mode}")
         try:
             paths = build_indexes(
                 store,
