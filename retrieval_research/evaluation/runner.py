@@ -174,7 +174,8 @@ def report_to_markdown(report: Dict[str, Any]) -> str:
         "| Mode | Queries | Term hit rate | Page hit rate | Citation support | Answerable | Avg confidence | MRR |",
         "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
-    for mode, mode_metrics in metrics["modes"].items():
+    for mode in sorted(metrics["modes"]):
+        mode_metrics = metrics["modes"][mode]
         lines.append(
             f"| {mode} | {mode_metrics['query_count']} | "
             f"{mode_metrics['term_hit_rate']:.3f} | {mode_metrics['page_hit_rate']:.3f} | "
