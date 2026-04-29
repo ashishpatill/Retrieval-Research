@@ -208,7 +208,7 @@ def report_to_markdown(report: Dict[str, Any]) -> str:
         "",
         "## Queries",
     ])
-    for item in report["results"]:
+    for item in sorted(report["results"], key=lambda row: (row["query"], row["mode"])):
         lines.extend(
             [
                 "",
