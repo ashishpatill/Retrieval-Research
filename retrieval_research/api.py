@@ -183,6 +183,8 @@ def create_app(store_root: str = "data") -> FastAPI:
             if payload.document_id
             else [document.id for document in store.list_documents()]
         )
+        if not document_ids:
+            raise HTTPException(status_code=400, detail="No documents available; ingest a document first.")
         evidence, steps = search_corpus(
             store,
             document_ids,
