@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import time
 from pathlib import Path
 
 try:
@@ -87,6 +88,27 @@ class ApiTest(unittest.TestCase):
 
             detail_res = client.get(f"/api/documents/{document_id}")
             self.assertEqual(detail_res.status_code, 200)
+
+    def test_documents_are_listed_newest_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = create_app(store_root=str(root / "data"))
+            client = TestClient(app)
+            store = ArtifactStore(str(root / "data"))
+
+            first = root / "first.md"
+            first.write_text("# First\n\nAlpha", encoding="utf-8")
+            second = root / "second.md"
+            second.write_text("# Second\n\nBeta", encoding="utf-8")
+
+            first_doc = ingest_path(str(first), store=store)
+            time.sleep(0.01)
+            second_doc = ingest_path(str(second), store=store)
+
+            documents_res = client.get("/api/documents")
+            self.assertEqual(documents_res.status_code, 200)
+            ids = [item["id"] for item in documents_res.json()["documents"]]
+            self.assertEqual(ids[:2], [second_doc.id, first_doc.id])
 
     def test_query_endpoint_rejects_invalid_mode(self):
         with tempfile.TemporaryDirectory() as tmp:
