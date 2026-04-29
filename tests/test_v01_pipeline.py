@@ -124,6 +124,7 @@ class V01PipelineTest(unittest.TestCase):
             planner_vs_static = report["metrics"]["planner_vs_static"]
             self.assertTrue(planner_vs_static["available"])
             self.assertIn("hybrid", planner_vs_static["baseline_modes"])
+            self.assertEqual(planner_vs_static["baseline_modes"], sorted(planner_vs_static["baseline_modes"]))
             self.assertIn("delta_vs_baseline_avg", planner_vs_static)
             self.assertIn("knowledge_card", report["results"][0])
             self.assertEqual(loaded_report["top_k"], 3)
