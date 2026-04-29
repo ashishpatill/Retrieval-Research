@@ -235,8 +235,10 @@ def create_app(store_root: str = "data") -> FastAPI:
             temp_path = temp.name
 
         store = _store()
-        report = run_eval(temp_path, store=store, top_k=payload.top_k, modes=payload.modes)
-        Path(temp_path).unlink(missing_ok=True)
+        try:
+            report = run_eval(temp_path, store=store, top_k=payload.top_k, modes=payload.modes)
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
         run_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         json_path = store.save_run(run_id, "eval_report.json", report)
         markdown = report_to_markdown(report)
