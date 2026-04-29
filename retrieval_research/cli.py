@@ -70,6 +70,11 @@ def cmd_index(args: argparse.Namespace) -> None:
 
 def _candidate_documents(store: ArtifactStore, document_id: Optional[str]) -> List[str]:
     if document_id:
+        try:
+            store.load_document(document_id)
+        except FileNotFoundError:
+            print(f"error: document not found: {document_id}", file=sys.stderr)
+            raise SystemExit(2)
         return [document_id]
     return [document.id for document in store.list_documents()]
 
