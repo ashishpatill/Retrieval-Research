@@ -48,7 +48,7 @@ def _settings_for(query_type: str, routes: List[str]) -> Dict[str, dict]:
         "dense": {"top_k_factor": 2.0},
         "late": {"top_k_factor": 2.0, "scorer": "maxsim"},
         "visual": {"top_k_factor": 2.0},
-        "graph": {"top_k_factor": 2.0, "expansion": "chunk_graph"},
+        "graph": {"top_k_factor": 2.0, "expansion": "section_entity_reference_graph"},
         "hybrid": {"top_k_factor": 2.0, "fusion": "reciprocal_rank"},
     }
     settings = {route: dict(base.get(route, {"top_k_factor": 2.0})) for route in routes}
