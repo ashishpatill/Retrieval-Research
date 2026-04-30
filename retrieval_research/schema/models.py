@@ -155,6 +155,7 @@ class KnowledgeCard:
     confidence: float = 0.0
     answerability_reason: str = ""
     unresolved_ambiguity: List[str] = field(default_factory=list)
+    follow_up_retrieval_suggestions: List[str] = field(default_factory=list)
     created_at: str = field(default_factory=utc_now)
 
     def to_dict(self) -> Dict[str, Any]:
