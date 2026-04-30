@@ -13,7 +13,8 @@ Features:
 - v0.1 retrieval pipeline: canonical artifacts, page-aware chunks, BM25 indexing, query traces
 - Custom Next.js inspector UI (documents, query workbench, eval dashboard) via FastAPI
 - Planner v1 routing with route settings, evidence consolidation, and trace diagnostics
-- Graph retrieval mode for section/context neighborhood expansion
+- Graph retrieval mode for section/entity/reference expansion with query diagnostics
+- Persisted `knowledge_graph.json` artifacts and cross-document graph search over shared entities/references
 - Eval reports with planner-vs-static comparison metrics
 
 ## Quick Start
@@ -59,6 +60,8 @@ python3 -m retrieval_research.cli query "retrieval pipeline" --mode planner
 python3 -m retrieval_research.cli eval datasets/manifests/readme_eval.example.json
 ```
 
+Eval manifests can use either `document_id` or `document_ids` for multi-document graph benchmarks.
+
 Retrieval modes now include `bm25`, `dense`, `late`, `hybrid`, `visual`, `graph`, and `planner`. The `late` mode is a dependency-free ColBERT-style MaxSim baseline.
 
 Supported retrieval query modes:
@@ -100,5 +103,7 @@ Generated query runs include:
 - `data/runs/<run-id>/retrieval_trace.json`
 - `data/runs/<run-id>/eval_report.json`
 - `data/runs/<run-id>/eval_report.md`
+
+Knowledge cards include answerability, confidence, unresolved ambiguity notes, and follow-up retrieval suggestions.
 
 See `IMPLEMENTATION_PLAN.md` for the phased build plan.
