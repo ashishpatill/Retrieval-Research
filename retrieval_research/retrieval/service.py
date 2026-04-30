@@ -141,7 +141,54 @@ def build_indexes(
     if mode in {"all", "graph", "planner"}:
         graph = GraphIndex(chunks)
         saved.append(str(store.save_index(document_id, "graph", graph.to_dict())))
+        saved.append(str(store.save_knowledge_graph(document_id, graph.knowledge_graph)))
     return saved
+
+
+def _load_graph_chunks(store: ArtifactStore, document_id: str) -> List:
+    try:
+        return GraphIndex.from_dict(store.load_index(document_id, "graph")).chunks
+    except FileNotFoundError:
+        return store.load_chunks(document_id)
+
+
+def _search_corpus_graph(
+    store: ArtifactStore,
+    document_ids: List[str],
+    query: str,
+    top_k: int,
+) -> Tuple[List[Evidence], List[dict]]:
+    chunks = []
+    missing = []
+    for document_id in document_ids:
+        try:
+            chunks.extend(_load_graph_chunks(store, document_id))
+        except FileNotFoundError:
+            missing.append(document_id)
+
+    if not chunks:
+        steps = [
+            {"path": "graph", "document_id": document_id, "hits": 0, "error": "missing_index"}
+            for document_id in missing
+        ]
+        return [], steps
+
+    index = GraphIndex(chunks)
+    hits = index.search(query, top_k=top_k)
+    steps = [
+        {
+            "path": "graph_corpus",
+            "document_ids": document_ids,
+            "hits": len(hits),
+            "expansion": "cross_document_section_entity_reference_graph",
+            "missing_document_ids": missing,
+            "diagnostics": {
+                **index.last_diagnostics,
+                "document_count": len({chunk.document_id for chunk in chunks}),
+            },
+        }
+    ]
+    return hits, steps
 
 
 def search_document(
@@ -194,7 +241,15 @@ def search_document(
     if mode == "graph":
         index = GraphIndex.from_dict(store.load_index(document_id, "graph"))
         hits = index.search(query, top_k=top_k)
-        steps.append({"path": "graph", "document_id": document_id, "hits": len(hits), "expansion": "chunk_graph"})
+        steps.append(
+            {
+                "path": "graph",
+                "document_id": document_id,
+                "hits": len(hits),
+                "expansion": "section_entity_reference_graph",
+                "diagnostics": index.last_diagnostics,
+            }
+        )
         return hits, steps
 
     if mode == "planner":
@@ -249,6 +304,9 @@ def search_corpus(
     mode: str = "hybrid",
     top_k: int = 5,
 ) -> Tuple[List[Evidence], List[dict]]:
+    if mode == "graph" and len(document_ids) > 1:
+        return _search_corpus_graph(store, document_ids, query, top_k=top_k)
+
     evidence: List[Evidence] = []
     steps: List[dict] = []
     for document_id in document_ids:
