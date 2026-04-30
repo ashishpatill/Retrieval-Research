@@ -7,11 +7,100 @@ type ResultPayload = {
   run_id: string;
   result: {
     answer: string;
-    knowledge_card?: { confidence?: number; answerable?: boolean; answerability_reason?: string } & Record<string, unknown>;
-    evidence?: unknown[];
+    knowledge_card?: {
+      confidence?: number;
+      answerable?: boolean;
+      answerability_reason?: string;
+      unresolved_ambiguity?: string[];
+      follow_up_retrieval_suggestions?: string[];
+    } & Record<string, unknown>;
+    evidence?: EvidenceItem[];
   };
-  trace: unknown;
+  trace: { steps?: TraceStep[] } & Record<string, unknown>;
 };
+
+type EvidenceItem = {
+  chunk_id?: string;
+  score?: number;
+  metadata?: {
+    graph_relations?: string[];
+    graph_expanded_from?: string[];
+  } & Record<string, unknown>;
+};
+
+type TraceStep = {
+  path?: string;
+  document_id?: string;
+  hits?: number;
+  diagnostics?: {
+    node_count?: number;
+    edge_count?: number;
+    seed_count?: number;
+    expanded_count?: number;
+    relation_counts?: Record<string, number>;
+    expanded_relation_counts?: Record<string, number>;
+    query_entities?: string[];
+    query_references?: string[];
+  };
+  [key: string]: unknown;
+};
+
+function GraphDiagnostics({ payload }: { payload: ResultPayload }) {
+  const graphSteps = (payload.trace.steps ?? []).filter((step) => step.path === "graph" && step.diagnostics);
+  const graphEvidence = (payload.result.evidence ?? []).filter((item) => item.metadata?.graph_relations?.length);
+
+  if (!graphSteps.length && !graphEvidence.length) {
+    return null;
+  }
+
+  const relationCounts = graphSteps[0]?.diagnostics?.expanded_relation_counts ?? graphSteps[0]?.diagnostics?.relation_counts ?? {};
+  const relationRows = Object.entries(relationCounts).sort((left, right) => right[1] - left[1]);
+
+  return (
+    <section className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900 p-4 lg:col-span-2">
+      <h3 className="text-sm font-semibold text-zinc-100">Graph diagnostics</h3>
+      {graphSteps.map((step, index) => (
+        <div key={`${step.document_id ?? "doc"}-${index}`} className="grid gap-2 text-xs text-zinc-300 sm:grid-cols-4">
+          <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
+            <p className="text-zinc-500">Nodes</p>
+            <p className="text-zinc-100">{step.diagnostics?.node_count ?? 0}</p>
+          </div>
+          <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
+            <p className="text-zinc-500">Edges</p>
+            <p className="text-zinc-100">{step.diagnostics?.edge_count ?? 0}</p>
+          </div>
+          <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
+            <p className="text-zinc-500">Seeds</p>
+            <p className="text-zinc-100">{step.diagnostics?.seed_count ?? 0}</p>
+          </div>
+          <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
+            <p className="text-zinc-500">Expanded</p>
+            <p className="text-zinc-100">{step.diagnostics?.expanded_count ?? 0}</p>
+          </div>
+        </div>
+      ))}
+      {relationRows.length ? (
+        <div className="flex flex-wrap gap-2">
+          {relationRows.map(([relation, count]) => (
+            <span key={relation} className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-300">
+              {relation}: {count}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {graphEvidence.length ? (
+        <div className="space-y-2">
+          {graphEvidence.slice(0, 5).map((item) => (
+            <div key={item.chunk_id} className="rounded-md border border-zinc-800 bg-zinc-950 p-2 text-xs text-zinc-300">
+              <p className="text-zinc-100">{item.chunk_id}</p>
+              <p>Relations: {item.metadata?.graph_relations?.join(", ")}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
 
 export function QueryWorkbench() {
   const [question, setQuestion] = useState("");
@@ -115,10 +204,21 @@ export function QueryWorkbench() {
               <p>Confidence: {(payload.result.knowledge_card?.confidence ?? 0).toFixed(3)}</p>
               <p>{payload.result.knowledge_card?.answerability_reason ?? "No reason available."}</p>
             </div>
+            {(payload.result.knowledge_card?.unresolved_ambiguity?.length ?? 0) > 0 ? (
+              <div className="rounded-md border border-amber-900 bg-amber-950/30 p-2 text-xs text-amber-100">
+                {payload.result.knowledge_card?.unresolved_ambiguity?.map((item) => <p key={item}>{item}</p>)}
+              </div>
+            ) : null}
+            {(payload.result.knowledge_card?.follow_up_retrieval_suggestions?.length ?? 0) > 0 ? (
+              <div className="rounded-md border border-sky-900 bg-sky-950/30 p-2 text-xs text-sky-100">
+                {payload.result.knowledge_card?.follow_up_retrieval_suggestions?.map((item) => <p key={item}>{item}</p>)}
+              </div>
+            ) : null}
             <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-xs text-zinc-200">
               {JSON.stringify(payload.result.knowledge_card ?? {}, null, 2)}
             </pre>
           </section>
+          <GraphDiagnostics payload={payload} />
           <section className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900 p-4 lg:col-span-2">
             <h3 className="text-sm font-semibold text-zinc-100">Retrieval trace</h3>
             <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-xs text-zinc-200">
