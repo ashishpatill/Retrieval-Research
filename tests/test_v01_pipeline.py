@@ -15,6 +15,7 @@ from retrieval_research.retrieval import (
     LateInteractionIndex,
     build_indexes,
     plan_query,
+    search_corpus,
     search_document,
 )
 from retrieval_research.retrieval.colpali import _load_runtime
@@ -90,6 +91,7 @@ class V01PipelineTest(unittest.TestCase):
             self.assertTrue(knowledge_card.answerable)
             self.assertGreater(knowledge_card.confidence, 0.0)
             self.assertIn("Evidence confidence", knowledge_card.answerability_reason)
+            self.assertIn("follow_up_retrieval_suggestions", knowledge_card.to_dict())
             self.assertIn(hybrid_hits[0].chunk_id, knowledge_card.answer)
             self.assertEqual(knowledge_card.claims[0].citation_ids, ["C1"])
             self.assertGreaterEqual(len(visual_hits), 1)
@@ -100,6 +102,8 @@ class V01PipelineTest(unittest.TestCase):
             self.assertEqual(service_late_steps[-1]["path"], "late")
             self.assertEqual(visual_steps[-1]["path"], "visual")
             self.assertEqual(graph_steps[-1]["path"], "graph")
+            self.assertEqual(graph_steps[-1]["expansion"], "section_entity_reference_graph")
+            self.assertIn("diagnostics", graph_steps[-1])
             self.assertIn("graph_relations", graph_hits[0].metadata)
             self.assertEqual(plan.query_type, "visual")
             self.assertIn("graph", graph_plan.routes)
@@ -130,6 +134,91 @@ class V01PipelineTest(unittest.TestCase):
             self.assertIn("knowledge_card", report["results"][0])
             self.assertEqual(loaded_report["top_k"], 3)
             self.assertIn("eval_report.json", next(run["files"] for run in runs if run["id"] == "eval_run"))
+
+    def test_graph_index_builds_section_entity_and_reference_edges(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "graph.md"
+            source.write_text(
+                "# Alpha Section\n\nAcme Retrieval describes Table 1 and cites Section Beta.\n\n"
+                "# Beta\n\nAcme Retrieval details the entity relationship.\n\n"
+                "# Tables\n\nTable 1 lists the retrieval metrics.\n",
+                encoding="utf-8",
+            )
+            store = ArtifactStore(str(root / "data"))
+            document = ingest_path(str(source), store=store)
+            chunks = chunk_document(document, max_words=12, overlap_words=0)
+            store.save_chunks(document.id, chunks)
+            build_indexes(store, document.id, mode="graph")
+
+            graph_payload = store.load_index(document.id, "graph")
+            graph_artifact = store.load_knowledge_graph(document.id)
+            relation_counts = graph_payload["stats"]["relation_counts"]
+            hits, steps = search_document(store, document.id, "Acme Retrieval Section Beta Table 1", mode="graph", top_k=5)
+
+            self.assertEqual(graph_artifact["type"], "knowledge_graph")
+            self.assertGreater(graph_artifact["stats"]["entity_count"], 0)
+            self.assertGreater(graph_artifact["stats"]["reference_count"], 0)
+            self.assertGreater(relation_counts.get("same_entity", 0), 0)
+            self.assertGreater(relation_counts.get("reference", 0), 0)
+            self.assertGreaterEqual(len(hits), 1)
+            self.assertTrue(any("same_entity" in hit.metadata["graph_relations"] or "reference" in hit.metadata["graph_relations"] for hit in hits))
+            self.assertGreater(steps[-1]["diagnostics"]["edge_count"], 0)
+
+    def test_corpus_graph_search_links_shared_entities_across_documents(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first_source = root / "alpha.md"
+            second_source = root / "beta.md"
+            first_source.write_text(
+                "# Alpha\n\nAcme Retrieval introduces the planner architecture and cites Section Bridge.\n",
+                encoding="utf-8",
+            )
+            second_source.write_text(
+                "# Bridge\n\nAcme Retrieval describes cross document evidence routing.\n",
+                encoding="utf-8",
+            )
+            store = ArtifactStore(str(root / "data"))
+            first_doc = ingest_path(str(first_source), store=store)
+            second_doc = ingest_path(str(second_source), store=store)
+            for document in (first_doc, second_doc):
+                chunks = chunk_document(document, max_words=20, overlap_words=0)
+                store.save_chunks(document.id, chunks)
+                build_indexes(store, document.id, mode="graph")
+
+            hits, steps = search_corpus(
+                store,
+                [first_doc.id, second_doc.id],
+                "Acme Retrieval cross document routing",
+                mode="graph",
+                top_k=5,
+            )
+
+            self.assertEqual(steps[-1]["path"], "graph_corpus")
+            self.assertEqual(steps[-1]["diagnostics"]["document_count"], 2)
+            self.assertGreater(steps[-1]["diagnostics"]["expanded_relation_counts"].get("same_entity", 0), 0)
+            self.assertEqual({hit.document_id for hit in hits}, {first_doc.id, second_doc.id})
+
+            manifest = root / "multi_doc_manifest.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "document_ids": [first_doc.id, second_doc.id],
+                        "queries": [
+                            {
+                                "query": "Acme Retrieval cross document routing",
+                                "expected_terms": ["routing"],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            report = run_eval(str(manifest), store=store, top_k=5, modes=["graph"])
+
+            self.assertTrue(report["metrics"]["graph_diagnostics"]["available"])
+            self.assertEqual(report["metrics"]["graph_diagnostics"]["max_document_count"], 2)
+            self.assertEqual(report["results"][0]["document_ids"], [first_doc.id, second_doc.id])
 
     def test_colpali_optional_dependency_message(self):
         try:
