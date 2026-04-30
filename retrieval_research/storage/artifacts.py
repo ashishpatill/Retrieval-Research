@@ -85,6 +85,14 @@ class ArtifactStore:
         payload = self.load_json(path)
         return [Chunk.from_dict(item) for item in payload.get("chunks", [])]
 
+    def save_knowledge_graph(self, document_id: str, payload: Dict[str, Any]) -> Path:
+        path = self.document_dir(document_id) / "knowledge_graph.json"
+        self.save_json(path, payload)
+        return path
+
+    def load_knowledge_graph(self, document_id: str) -> Dict[str, Any]:
+        return self.load_json(self.document_dir(document_id) / "knowledge_graph.json")
+
     def save_index(self, document_id: str, index_name: str, payload: Dict[str, Any]) -> Path:
         path = self.indexes_dir / document_id / f"{index_name}.json"
         self.save_json(path, payload)
