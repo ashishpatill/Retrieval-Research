@@ -101,6 +101,12 @@ def create_app(store_root: str = "data") -> FastAPI:
             chunk_count = len(chunks)
         except FileNotFoundError:
             chunk_count = 0
+        try:
+            knowledge_graph = store.load_knowledge_graph(document_id)
+            graph_stats = knowledge_graph.get("stats", {})
+        except FileNotFoundError:
+            knowledge_graph = None
+            graph_stats = None
 
         def _index_ready(name: str) -> bool:
             try:
@@ -121,7 +127,9 @@ def create_app(store_root: str = "data") -> FastAPI:
                     "visual": _index_ready("visual"),
                     "graph": _index_ready("graph"),
                 },
+                "knowledge_graph": graph_stats,
             },
+            "knowledge_graph": knowledge_graph,
         }
 
     @app.post("/api/documents/ingest")
