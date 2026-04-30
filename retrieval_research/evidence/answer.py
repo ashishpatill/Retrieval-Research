@@ -19,6 +19,46 @@ def _confidence_from_evidence(items: list[Evidence]) -> float:
     return sum(top_scores) / len(top_scores)
 
 
+def _ambiguity_notes(items: list[Evidence], confidence: float) -> list[str]:
+    notes = []
+    if confidence < 0.35:
+        notes.append("Top evidence scores are low, so the answer may be under-supported.")
+    if len({item.document_id for item in items}) > 1:
+        notes.append("Evidence spans multiple documents and may need cross-document reconciliation.")
+    if len(items) >= 2 and abs(items[0].score - items[1].score) < 0.05:
+        notes.append("The top retrieval hits are closely scored, leaving ranking ambiguity.")
+    conflict_markers = [
+        item
+        for item in items
+        if "conflict" in item.metadata.get("graph_relations", [])
+        or item.metadata.get("conflicts_detected")
+    ]
+    if conflict_markers:
+        notes.append("Some retrieved evidence may conflict and should be checked before relying on the answer.")
+    return notes
+
+
+def _follow_up_suggestions(items: list[Evidence], confidence: float) -> list[str]:
+    if not items:
+        return [
+            "Run a broader planner query across all indexed documents.",
+            "Build missing indexes, especially hybrid and graph, before retrying.",
+        ]
+
+    paths = {item.retrieval_path for item in items}
+    suggestions = []
+    if confidence < 0.5:
+        suggestions.append("Increase top_k and rerun in planner mode to gather more corroborating evidence.")
+    if not any("graph" in path for path in paths):
+        suggestions.append("Try graph mode for section, entity, or reference expansion around the current hits.")
+    if not any("visual" in path for path in paths):
+        suggestions.append("Try visual mode if the answer may depend on figures, tables, scans, or page layout.")
+    pages = sorted({page for item in items[:3] for page in item.page_numbers})
+    if pages:
+        suggestions.append(f"Inspect page(s) {', '.join(str(page) for page in pages)} from the top evidence.")
+    return suggestions[:4]
+
+
 def build_knowledge_card(query: str, evidence: Iterable[Evidence]) -> KnowledgeCard:
     items = list(evidence)
     if not items:
@@ -31,6 +71,10 @@ def build_knowledge_card(query: str, evidence: Iterable[Evidence]) -> KnowledgeC
             citations=[],
             claims=[],
             unresolved_ambiguity=["No retrieved evidence was available to support an answer."],
+            follow_up_retrieval_suggestions=[
+                "Run a broader planner query across all indexed documents.",
+                "Build missing indexes, especially hybrid and graph, before retrying.",
+            ],
         )
 
     citations = [
@@ -75,6 +119,8 @@ def build_knowledge_card(query: str, evidence: Iterable[Evidence]) -> KnowledgeC
         claims=claims,
         confidence=confidence,
         answerability_reason=reason,
+        unresolved_ambiguity=_ambiguity_notes(items, confidence),
+        follow_up_retrieval_suggestions=_follow_up_suggestions(items, confidence),
     )
 
 
