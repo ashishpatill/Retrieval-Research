@@ -4,7 +4,7 @@ This plan turns `retrieval_roadmap.md` into an implementation sequence for the p
 
 ## Progress status (session checkpoint)
 
-Last updated: 2026-04-28
+Last updated: 2026-05-01
 
 Current milestone: **v0.3 (in progress)**
 
@@ -34,6 +34,12 @@ Completed:
 - Phase 6 structured knowledge layer (initial progress):
   - First graph-style retrieval path (`graph`) added with chunk-neighborhood expansion.
   - Planner can route graph-intent queries through graph retrieval.
+  - Graph index now builds section, entity, and reference links in addition to page/chunk neighborhood links.
+  - Query and eval UI surfaces graph retrieval diagnostics.
+  - Knowledge cards include unresolved ambiguity notes and follow-up retrieval suggestions.
+  - `knowledge_graph.json` artifacts persist extracted sections/entities/references alongside chunks.
+  - Corpus graph search supports cross-document traversal over shared entities and references.
+  - Eval manifests can target `document_ids` and report aggregate graph diagnostics.
 
 In progress / remaining for near-term roadmap:
 
@@ -41,15 +47,16 @@ In progress / remaining for near-term roadmap:
   - Broaden visual retrieval quality and benchmark on image/table-heavy corpora.
 - Phase 5 completion:
   - Improve merge strategy controls (e.g., alternative merge policies and rerank toggles).
-- Phase 6 start:
-  - Expand graph retrieval beyond chunk adjacency into explicit section/entity/reference traversal.
-  - Richer `knowledge_card.json` fields for unresolved ambiguity and follow-up retrieval suggestions.
+- Phase 6 continuation:
+  - Add richer graph inspection and filtering controls in the UI.
+  - Add graph-aware planner routes across multi-document corpus queries.
+  - Improve entity/reference extraction quality beyond regex heuristics.
 
 Next session start point:
 
-1. Add graph construction from explicit section/entity/reference links (not only chunk neighborhood).
-2. Add graph retrieval diagnostics to custom UI query/eval pages.
-3. Add unresolved ambiguity and follow-up retrieval suggestion fields in `knowledge_card.json`.
+1. Add graph-aware planner routes across multi-document corpus queries.
+2. Add UI controls for graph relation filtering and graph artifact inspection.
+3. Improve entity/reference extraction quality beyond regex heuristics.
 
 ## Current baseline
 
