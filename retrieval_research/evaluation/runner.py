@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from retrieval_research.evidence import build_knowledge_card
-from retrieval_research.retrieval import RETRIEVAL_MODES, search_document
+from retrieval_research.retrieval import RETRIEVAL_MODES, search_corpus, search_document
 from retrieval_research.schema import Evidence
 from retrieval_research.storage import ArtifactStore
 
@@ -84,6 +84,46 @@ def _planner_static_comparison(metrics_by_mode: Dict[str, Dict[str, float]]) -> 
     }
 
 
+def _graph_diagnostics_summary(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    graph_steps = [
+        step
+        for item in results
+        for step in item.get("steps", [])
+        if step.get("path") in {"graph", "graph_corpus"} and step.get("diagnostics")
+    ]
+    if not graph_steps:
+        return {"available": False, "reason": "graph mode was not run or did not emit diagnostics"}
+
+    relation_counts: Dict[str, int] = {}
+    seed_total = 0
+    expanded_total = 0
+    edge_total = 0
+    node_total = 0
+    document_counts = []
+    for step in graph_steps:
+        diagnostics = step["diagnostics"]
+        seed_total += int(diagnostics.get("seed_count", 0))
+        expanded_total += int(diagnostics.get("expanded_count", 0))
+        edge_total += int(diagnostics.get("edge_count", 0))
+        node_total += int(diagnostics.get("node_count", 0))
+        if diagnostics.get("document_count") is not None:
+            document_counts.append(int(diagnostics["document_count"]))
+        for relation, count in diagnostics.get("expanded_relation_counts", diagnostics.get("relation_counts", {})).items():
+            relation_counts[relation] = relation_counts.get(relation, 0) + int(count)
+
+    total = len(graph_steps)
+    return {
+        "available": True,
+        "step_count": total,
+        "avg_seed_count": seed_total / total,
+        "avg_expanded_count": expanded_total / total,
+        "avg_node_count": node_total / total,
+        "avg_edge_count": edge_total / total,
+        "max_document_count": max(document_counts) if document_counts else 1,
+        "relation_counts": dict(sorted(relation_counts.items())),
+    }
+
+
 def run_eval(
     manifest_path: str,
     store: Optional[ArtifactStore] = None,
@@ -102,11 +142,19 @@ def run_eval(
 
     for case in cases:
         document_id = case.get("document_id") or manifest.get("document_id")
-        if not document_id:
-            raise ValueError("Each eval case needs document_id, or manifest needs a top-level document_id.")
+        document_ids = case.get("document_ids") or manifest.get("document_ids")
+        if document_id:
+            document_ids = [document_id]
+        if not document_ids:
+            raise ValueError(
+                "Each eval case needs document_id/document_ids, or manifest needs top-level document_id/document_ids."
+            )
 
         for mode in modes:
-            evidence, steps = search_document(store, document_id, case["query"], mode=mode, top_k=top_k)
+            if len(document_ids) == 1:
+                evidence, steps = search_document(store, document_ids[0], case["query"], mode=mode, top_k=top_k)
+            else:
+                evidence, steps = search_corpus(store, document_ids, case["query"], mode=mode, top_k=top_k)
             knowledge_card = build_knowledge_card(case["query"], evidence).to_dict()
             expected_terms = case.get("expected_terms", [])
             expected_pages = case.get("expected_pages", [])
@@ -119,7 +167,8 @@ def run_eval(
             results.append(
                 {
                     "query": case["query"],
-                    "document_id": document_id,
+                    "document_id": document_ids[0] if len(document_ids) == 1 else None,
+                    "document_ids": document_ids,
                     "mode": mode,
                     "term_hit": term_hit,
                     "page_hit": page_hit,
@@ -156,6 +205,7 @@ def run_eval(
             "query_count": len(results),
             "modes": metrics_by_mode,
             "planner_vs_static": _planner_static_comparison(metrics_by_mode),
+            "graph_diagnostics": _graph_diagnostics_summary(results),
         },
         "results": results,
     }
@@ -203,6 +253,25 @@ def report_to_markdown(report: Dict[str, Any]) -> str:
             baseline_value = comparison["baseline_average"][metric]
             delta = comparison["delta_vs_baseline_avg"][metric]
             lines.append(f"| {metric} | {planner_value:.3f} | {baseline_value:.3f} | {delta:+.3f} |")
+
+    graph_diagnostics = metrics.get("graph_diagnostics", {"available": False})
+    lines.extend([
+        "",
+        "## Graph Diagnostics",
+        "",
+    ])
+    if not graph_diagnostics.get("available"):
+        lines.append(f"- Not available: {graph_diagnostics.get('reason', 'graph diagnostics unavailable')}")
+    else:
+        lines.append(f"- Graph steps: {graph_diagnostics['step_count']}")
+        lines.append(f"- Avg seeds: {graph_diagnostics['avg_seed_count']:.3f}")
+        lines.append(f"- Avg expanded nodes: {graph_diagnostics['avg_expanded_count']:.3f}")
+        lines.append(f"- Max document count: {graph_diagnostics['max_document_count']}")
+        if graph_diagnostics.get("relation_counts"):
+            relation_summary = ", ".join(
+                f"{relation}={count}" for relation, count in graph_diagnostics["relation_counts"].items()
+            )
+            lines.append(f"- Expanded relations: {relation_summary}")
 
     lines.extend([
         "",
