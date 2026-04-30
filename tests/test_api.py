@@ -57,6 +57,10 @@ class ApiTest(unittest.TestCase):
                 json={"mode": "all", "visual_backend": "baseline", "visual_compression": "none"},
             )
             self.assertEqual(index_res.status_code, 200)
+            indexed_detail_res = client.get(f"/api/documents/{document.id}")
+            self.assertEqual(indexed_detail_res.status_code, 200)
+            self.assertIn("knowledge_graph", indexed_detail_res.json()["stats"])
+            self.assertGreaterEqual(indexed_detail_res.json()["stats"]["knowledge_graph"]["node_count"], 1)
 
             query_res = client.post(
                 "/api/query",
