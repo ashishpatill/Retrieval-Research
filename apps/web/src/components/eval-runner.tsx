@@ -5,7 +5,30 @@ import { apiBaseUrl } from "@/lib/api";
 
 type EvalResponse = {
   run_id: string;
-  report: unknown;
+  report: {
+    metrics?: {
+      graph_diagnostics?: {
+        available?: boolean;
+        step_count?: number;
+        avg_seed_count?: number;
+        avg_expanded_count?: number;
+        max_document_count?: number;
+        relation_counts?: Record<string, number>;
+      };
+    };
+    results?: Array<{
+      query?: string;
+      mode?: string;
+      steps?: Array<{
+        path?: string;
+        diagnostics?: {
+          seed_count?: number;
+          expanded_count?: number;
+          expanded_relation_counts?: Record<string, number>;
+        };
+      }>;
+    }>;
+  } & Record<string, unknown>;
 };
 
 const DEFAULT_MANIFEST = {
@@ -50,6 +73,16 @@ export function EvalRunner() {
     }
   }
 
+  const graphRows =
+    result?.report.results
+      ?.flatMap((row) =>
+        (row.steps ?? [])
+          .filter((step) => step.path === "graph" && step.diagnostics)
+          .map((step) => ({ query: row.query, mode: row.mode, diagnostics: step.diagnostics })),
+      )
+      .slice(0, 8) ?? [];
+  const graphSummary = result?.report.metrics?.graph_diagnostics;
+
   return (
     <div className="space-y-4">
       <form onSubmit={onSubmit} className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
@@ -90,6 +123,37 @@ export function EvalRunner() {
         <section className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
           <h3 className="text-sm font-semibold text-zinc-100">Latest report</h3>
           <p className="text-xs text-zinc-400">Run ID: {result.run_id}</p>
+          {graphSummary?.available ? (
+            <div className="grid gap-2 text-xs text-zinc-300 sm:grid-cols-4">
+              <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
+                <p className="text-zinc-500">Graph steps</p>
+                <p className="text-zinc-100">{graphSummary.step_count ?? 0}</p>
+              </div>
+              <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
+                <p className="text-zinc-500">Avg seeds</p>
+                <p className="text-zinc-100">{(graphSummary.avg_seed_count ?? 0).toFixed(2)}</p>
+              </div>
+              <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
+                <p className="text-zinc-500">Avg expanded</p>
+                <p className="text-zinc-100">{(graphSummary.avg_expanded_count ?? 0).toFixed(2)}</p>
+              </div>
+              <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
+                <p className="text-zinc-500">Max docs</p>
+                <p className="text-zinc-100">{graphSummary.max_document_count ?? 1}</p>
+              </div>
+            </div>
+          ) : null}
+          {graphRows.length ? (
+            <div className="space-y-2 rounded-md border border-zinc-800 bg-zinc-950 p-3">
+              <h4 className="text-xs font-semibold text-zinc-200">Graph retrieval diagnostics</h4>
+              {graphRows.map((row, index) => (
+                <div key={`${row.query}-${row.mode}-${index}`} className="text-xs text-zinc-300">
+                  <span className="text-zinc-100">{row.mode}</span> {row.query}: seeds{" "}
+                  {row.diagnostics?.seed_count ?? 0}, expanded {row.diagnostics?.expanded_count ?? 0}
+                </div>
+              ))}
+            </div>
+          ) : null}
           <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-xs text-zinc-200">
             {JSON.stringify(result.report, null, 2)}
           </pre>
