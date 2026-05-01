@@ -12,6 +12,7 @@ from retrieval_research.retrieval import (
     BM25Index,
     ColPaliUnavailableError,
     DenseIndex,
+    GraphIndex,
     LateInteractionIndex,
     build_indexes,
     plan_query,
@@ -20,6 +21,8 @@ from retrieval_research.retrieval import (
 )
 from retrieval_research.retrieval.colpali import _load_runtime
 from retrieval_research.retrieval.compression import dequantize_int8, quantize_int8
+from retrieval_research.retrieval.service import _consolidate_planner_hits
+from retrieval_research.schema import Chunk, Evidence
 from retrieval_research.storage import ArtifactStore
 
 
@@ -116,6 +119,7 @@ class V01PipelineTest(unittest.TestCase):
             planner_merge = next(step for step in planner_steps if step["path"] == "planner_merge")
             self.assertIn("redundancy_groups", planner_merge)
             self.assertIn("conflicts_detected", planner_merge)
+            self.assertFalse(planner_merge["reranked"])
             self.assertEqual(planner_merge["requested_top_k"], 3)
             self.assertEqual(planner_merge["merge_strategy"], "score_max")
             self.assertGreaterEqual(planner_merge["unique_chunks"], planner_merge["hits"])
@@ -156,6 +160,8 @@ class V01PipelineTest(unittest.TestCase):
             relation_counts = graph_payload["stats"]["relation_counts"]
             hits, steps = search_document(store, document.id, "Acme Retrieval Section Beta Table 1", mode="graph", top_k=5)
 
+            self.assertIn("Alpha Section", {chunk.parent_section for chunk in chunks})
+            self.assertIn("Beta", {chunk.parent_section for chunk in chunks})
             self.assertEqual(graph_artifact["type"], "knowledge_graph")
             self.assertGreater(graph_artifact["stats"]["entity_count"], 0)
             self.assertGreater(graph_artifact["stats"]["reference_count"], 0)
@@ -164,6 +170,121 @@ class V01PipelineTest(unittest.TestCase):
             self.assertGreaterEqual(len(hits), 1)
             self.assertTrue(any("same_entity" in hit.metadata["graph_relations"] or "reference" in hit.metadata["graph_relations"] for hit in hits))
             self.assertGreater(steps[-1]["diagnostics"]["edge_count"], 0)
+
+    def test_planner_merge_strategy_and_rerank_controls(self):
+        hits = [
+            Evidence(
+                chunk_id="a",
+                document_id="doc",
+                page_numbers=[1],
+                text="background material",
+                score=0.9,
+                retrieval_path="bm25",
+            ),
+            Evidence(
+                chunk_id="b",
+                document_id="doc",
+                page_numbers=[2],
+                text="alpha beta focused answer",
+                score=0.86,
+                retrieval_path="bm25",
+            ),
+            Evidence(
+                chunk_id="b",
+                document_id="doc",
+                page_numbers=[2],
+                text="alpha beta focused answer",
+                score=0.84,
+                retrieval_path="dense",
+            ),
+        ]
+
+        score_max_hits, score_max_stats = _consolidate_planner_hits(
+            hits,
+            top_k=1,
+            query_type="semantic",
+            planner_reason="test",
+            query="alpha beta",
+            merge_strategy="score_max",
+            rerank=False,
+        )
+        route_vote_hits, route_vote_stats = _consolidate_planner_hits(
+            hits,
+            top_k=1,
+            query_type="semantic",
+            planner_reason="test",
+            query="alpha beta",
+            merge_strategy="route_vote",
+            rerank=False,
+        )
+        reranked_hits, reranked_stats = _consolidate_planner_hits(
+            hits,
+            top_k=1,
+            query_type="semantic",
+            planner_reason="test",
+            query="alpha beta",
+            merge_strategy="score_max",
+            rerank=True,
+        )
+
+        self.assertEqual(score_max_hits[0].chunk_id, "a")
+        self.assertEqual(route_vote_hits[0].chunk_id, "b")
+        self.assertEqual(reranked_hits[0].chunk_id, "b")
+        self.assertFalse(score_max_stats["reranked"])
+        self.assertFalse(route_vote_stats["reranked"])
+        self.assertTrue(reranked_stats["reranked"])
+        self.assertEqual(route_vote_hits[0].metadata["merge_strategy"], "route_vote")
+        self.assertTrue(reranked_hits[0].metadata["reranked"])
+
+    def test_graph_extraction_handles_acronyms_aliases_and_external_refs(self):
+        chunks = [
+            Chunk(
+                id="doc:chunk:0",
+                document_id="doc",
+                page_numbers=[1],
+                text=(
+                    "Background cites Section 2.1, Figures 1 and 2, DOI 10.1234/ABC.DEF, "
+                    "and arXiv: 2401.12345. The method is Retrieval Augmented Generation "
+                    "(RAG) with `cross-document routing`."
+                ),
+                chunk_index=0,
+                parent_section="Background",
+            ),
+            Chunk(
+                id="doc:chunk:1",
+                document_id="doc",
+                page_numbers=[2],
+                text="The 2.1 Retrieval Planner section explains RAG and cross-document routing.",
+                chunk_index=1,
+                parent_section="2.1 Retrieval Planner",
+            ),
+            Chunk(
+                id="doc:chunk:2",
+                document_id="doc",
+                page_numbers=[3],
+                text="Figure 2 shows the RAG routing architecture.",
+                chunk_index=2,
+                parent_section="Figures",
+            ),
+        ]
+
+        index = GraphIndex(chunks)
+        graph = index.knowledge_graph
+        references = {item["reference"] for item in graph["references"]}
+        entities = {item["name"] for item in graph["entities"]}
+        hits = index.search("Section 2.1 RAG Figure 2", top_k=5)
+
+        self.assertIn("RAG", entities)
+        self.assertIn("Retrieval Augmented Generation", entities)
+        self.assertIn("cross-document routing", entities)
+        self.assertIn("section:2.1", references)
+        self.assertIn("figure:1", references)
+        self.assertIn("figure:2", references)
+        self.assertIn("doi:10.1234/abc.def", references)
+        self.assertIn("arxiv:2401.12345", references)
+        self.assertTrue(any(edge.get("reference") == "section:2.1" for edge in index.edges["doc:chunk:0"]))
+        self.assertTrue(any(edge.get("reference") == "figure:2" for edge in index.edges["doc:chunk:0"]))
+        self.assertTrue(any("reference" in hit.metadata["graph_relations"] for hit in hits))
 
     def test_corpus_graph_search_links_shared_entities_across_documents(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -199,11 +320,31 @@ class V01PipelineTest(unittest.TestCase):
             self.assertGreater(steps[-1]["diagnostics"]["expanded_relation_counts"].get("same_entity", 0), 0)
             self.assertEqual({hit.document_id for hit in hits}, {first_doc.id, second_doc.id})
 
+            planner_hits, planner_steps = search_corpus(
+                store,
+                [first_doc.id, second_doc.id],
+                "Acme Retrieval cross document routing",
+                mode="planner",
+                top_k=5,
+            )
+            planner_plan = plan_query("Acme Retrieval cross document routing")
+
+            self.assertIn("graph", planner_plan.routes)
+            self.assertEqual(planner_steps[0]["path"], "planner")
+            self.assertEqual(planner_steps[0]["document_ids"], [first_doc.id, second_doc.id])
+            self.assertTrue(any(step.get("route") == "graph" for step in planner_steps if step["path"] == "planner_route"))
+            self.assertTrue(any(step.get("path") == "graph_corpus" for step in planner_steps))
+            self.assertTrue(any(step.get("path") == "planner_merge" for step in planner_steps))
+            self.assertEqual({hit.document_id for hit in planner_hits}, {first_doc.id, second_doc.id})
+
             manifest = root / "multi_doc_manifest.json"
             manifest.write_text(
                 json.dumps(
                     {
                         "document_ids": [first_doc.id, second_doc.id],
+                        "expected_entities": ["Acme Retrieval"],
+                        "expected_references": ["section:bridge"],
+                        "expected_sections": ["Bridge"],
                         "queries": [
                             {
                                 "query": "Acme Retrieval cross document routing",
@@ -215,10 +356,21 @@ class V01PipelineTest(unittest.TestCase):
                 encoding="utf-8",
             )
             report = run_eval(str(manifest), store=store, top_k=5, modes=["graph"])
+            sweep_report = run_eval(str(manifest), store=store, top_k=5, modes=["planner"], planner_sweep=True)
 
             self.assertTrue(report["metrics"]["graph_diagnostics"]["available"])
             self.assertEqual(report["metrics"]["graph_diagnostics"]["max_document_count"], 2)
+            graph_extraction = report["metrics"]["graph_extraction"]
+            self.assertTrue(graph_extraction["available"])
+            self.assertEqual(graph_extraction["document_count"], 2)
+            self.assertEqual(graph_extraction["expected_recall"]["entities"]["recall"], 1.0)
+            self.assertEqual(graph_extraction["expected_recall"]["references"]["recall"], 1.0)
+            self.assertEqual(graph_extraction["expected_recall"]["sections"]["recall"], 1.0)
             self.assertEqual(report["results"][0]["document_ids"], [first_doc.id, second_doc.id])
+            planner_sweep = sweep_report["metrics"]["planner_sweep"]
+            self.assertTrue(planner_sweep["available"])
+            self.assertEqual(len(planner_sweep["variants"]), 4)
+            self.assertIn(planner_sweep["best_by_mrr"], {variant["name"] for variant in planner_sweep["variants"]})
 
     def test_colpali_optional_dependency_message(self):
         try:
