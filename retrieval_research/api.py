@@ -14,7 +14,15 @@ from retrieval_research.chunking import chunk_document
 from retrieval_research.evaluation.runner import report_to_markdown, run_eval
 from retrieval_research.evidence import build_knowledge_card
 from retrieval_research.ingest import ingest_path
-from retrieval_research.retrieval import DEFAULT_COLPALI_MODEL, RETRIEVAL_MODES, build_indexes, search_corpus
+from retrieval_research.retrieval import (
+    DEFAULT_RERANK_OVERLAP_WEIGHT,
+    DEFAULT_ROUTE_VOTE_BONUS,
+    DEFAULT_COLPALI_MODEL,
+    PLANNER_MERGE_STRATEGIES,
+    RETRIEVAL_MODES,
+    build_indexes,
+    search_corpus,
+)
 from retrieval_research.schema import RetrievalResult, RetrievalTrace
 from retrieval_research.storage import ArtifactStore
 
@@ -37,12 +45,21 @@ class QueryRequest(BaseModel):
     document_id: Optional[str] = None
     top_k: int = Field(default=5, ge=1, le=50)
     mode: str = "hybrid"
+    planner_merge_strategy: str = "score_max"
+    planner_rerank: bool = False
+    planner_route_vote_bonus: float = Field(default=DEFAULT_ROUTE_VOTE_BONUS, ge=0.0, le=1.0)
+    planner_rerank_overlap_weight: float = Field(default=DEFAULT_RERANK_OVERLAP_WEIGHT, ge=0.0, le=1.0)
 
 
 class EvalRequest(BaseModel):
     manifest: Dict[str, Any]
     top_k: int = Field(default=5, ge=1, le=50)
     modes: List[str] = Field(default_factory=lambda: ["bm25", "dense", "hybrid", "planner"])
+    planner_merge_strategy: str = "score_max"
+    planner_rerank: bool = False
+    planner_route_vote_bonus: float = Field(default=DEFAULT_ROUTE_VOTE_BONUS, ge=0.0, le=1.0)
+    planner_rerank_overlap_weight: float = Field(default=DEFAULT_RERANK_OVERLAP_WEIGHT, ge=0.0, le=1.0)
+    planner_sweep: bool = False
 
 
 def create_app(store_root: str = "data") -> FastAPI:
@@ -187,6 +204,11 @@ def create_app(store_root: str = "data") -> FastAPI:
     def query_endpoint(payload: QueryRequest) -> Dict[str, Any]:
         if payload.mode not in RETRIEVAL_MODES:
             raise HTTPException(status_code=400, detail=f"Unsupported retrieval mode: {payload.mode}")
+        if payload.planner_merge_strategy not in PLANNER_MERGE_STRATEGIES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported planner merge strategy: {payload.planner_merge_strategy}",
+            )
 
         store = _store()
         if payload.document_id:
@@ -207,6 +229,10 @@ def create_app(store_root: str = "data") -> FastAPI:
             payload.question,
             mode=payload.mode,
             top_k=payload.top_k,
+            planner_merge_strategy=payload.planner_merge_strategy,
+            planner_rerank=payload.planner_rerank,
+            planner_route_vote_bonus=payload.planner_route_vote_bonus,
+            planner_rerank_overlap_weight=payload.planner_rerank_overlap_weight,
         )
         knowledge_card = build_knowledge_card(payload.question, evidence)
         result = RetrievalResult(
@@ -247,6 +273,11 @@ def create_app(store_root: str = "data") -> FastAPI:
         for mode in payload.modes:
             if mode not in RETRIEVAL_MODES:
                 raise HTTPException(status_code=400, detail=f"Unsupported eval mode: {mode}")
+        if payload.planner_merge_strategy not in PLANNER_MERGE_STRATEGIES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported planner merge strategy: {payload.planner_merge_strategy}",
+            )
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as temp:
             temp.write(json.dumps(payload.manifest).encode("utf-8"))
@@ -254,7 +285,17 @@ def create_app(store_root: str = "data") -> FastAPI:
 
         store = _store()
         try:
-            report = run_eval(temp_path, store=store, top_k=payload.top_k, modes=payload.modes)
+            report = run_eval(
+                temp_path,
+                store=store,
+                top_k=payload.top_k,
+                modes=payload.modes,
+                planner_merge_strategy=payload.planner_merge_strategy,
+                planner_rerank=payload.planner_rerank,
+                planner_route_vote_bonus=payload.planner_route_vote_bonus,
+                planner_rerank_overlap_weight=payload.planner_rerank_overlap_weight,
+                planner_sweep=payload.planner_sweep,
+            )
         finally:
             Path(temp_path).unlink(missing_ok=True)
         run_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")

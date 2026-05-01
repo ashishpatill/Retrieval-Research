@@ -6,7 +6,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from retrieval_research.evidence import build_knowledge_card
-from retrieval_research.retrieval import RETRIEVAL_MODES, search_corpus, search_document
+from retrieval_research.retrieval import (
+    DEFAULT_RERANK_OVERLAP_WEIGHT,
+    DEFAULT_ROUTE_VOTE_BONUS,
+    PLANNER_MERGE_STRATEGIES,
+    RETRIEVAL_MODES,
+    search_corpus,
+    search_document,
+)
 from retrieval_research.schema import Evidence
 from retrieval_research.storage import ArtifactStore
 
@@ -124,21 +131,272 @@ def _graph_diagnostics_summary(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def _expected_values(manifest: Dict[str, Any], cases: List[Dict[str, Any]], key: str) -> List[str]:
+    values = list(manifest.get(key, []))
+    for case in cases:
+        values.extend(case.get(key, []))
+    return sorted({str(value) for value in values})
+
+
+def _graph_extraction_summary(
+    store: ArtifactStore,
+    manifest: Dict[str, Any],
+    cases: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    document_ids = set(manifest.get("document_ids", []))
+    if manifest.get("document_id"):
+        document_ids.add(str(manifest["document_id"]))
+    for case in cases:
+        document_ids.update(str(value) for value in case.get("document_ids", []))
+        if case.get("document_id"):
+            document_ids.add(str(case["document_id"]))
+
+    if not document_ids:
+        return {"available": False, "reason": "manifest did not identify documents for graph extraction summary"}
+
+    graphs = []
+    missing = []
+    for document_id in sorted(document_ids):
+        try:
+            graphs.append((document_id, store.load_knowledge_graph(document_id)))
+        except FileNotFoundError:
+            missing.append(document_id)
+
+    if not graphs:
+        return {"available": False, "reason": "no knowledge_graph.json artifacts found", "missing_document_ids": missing}
+
+    relation_counts: Dict[str, int] = {}
+    entity_names = set()
+    reference_names = set()
+    section_names = set()
+    documents = []
+    totals = {
+        "node_count": 0,
+        "edge_count": 0,
+        "section_count": 0,
+        "entity_count": 0,
+        "reference_count": 0,
+    }
+    for document_id, graph in graphs:
+        stats = graph.get("stats", {})
+        for key in totals:
+            totals[key] += int(stats.get(key, 0))
+        for relation, count in stats.get("relation_counts", {}).items():
+            relation_counts[relation] = relation_counts.get(relation, 0) + int(count)
+        entity_names.update(str(item.get("name", "")).lower() for item in graph.get("entities", []) if item.get("name"))
+        reference_names.update(str(item.get("reference", "")).lower() for item in graph.get("references", []) if item.get("reference"))
+        section_names.update(str(item.get("name", "")).lower() for item in graph.get("sections", []) if item.get("name"))
+        documents.append({"document_id": document_id, **{key: int(stats.get(key, 0)) for key in totals}})
+
+    expected_entities = _expected_values(manifest, cases, "expected_entities")
+    expected_references = _expected_values(manifest, cases, "expected_references")
+    expected_sections = _expected_values(manifest, cases, "expected_sections")
+
+    def _recall(expected: List[str], observed: set[str]) -> Dict[str, Any]:
+        if not expected:
+            return {"available": False, "reason": "no expected values supplied"}
+        hits = [value for value in expected if value.lower() in observed]
+        return {
+            "available": True,
+            "expected_count": len(expected),
+            "hit_count": len(hits),
+            "recall": len(hits) / len(expected),
+            "misses": [value for value in expected if value not in hits],
+        }
+
+    document_count = len(graphs)
+    return {
+        "available": True,
+        "document_count": document_count,
+        "missing_document_ids": missing,
+        "totals": totals,
+        "averages": {key: totals[key] / document_count for key in totals},
+        "relation_counts": dict(sorted(relation_counts.items())),
+        "expected_recall": {
+            "entities": _recall(expected_entities, entity_names),
+            "references": _recall(expected_references, reference_names),
+            "sections": _recall(expected_sections, section_names),
+        },
+        "documents": documents,
+    }
+
+
+def _planner_sweep_variants(
+    value: Any,
+    route_vote_bonus: float,
+    rerank_overlap_weight: float,
+) -> List[Dict[str, Any]]:
+    if not value:
+        return []
+    if value is True:
+        return [
+            {
+                "name": f"{strategy}{'_rerank' if rerank else ''}",
+                "merge_strategy": strategy,
+                "rerank": rerank,
+                "route_vote_bonus": route_vote_bonus,
+                "rerank_overlap_weight": rerank_overlap_weight,
+            }
+            for strategy in PLANNER_MERGE_STRATEGIES
+            for rerank in (False, True)
+        ]
+    variants = []
+    for idx, item in enumerate(value if isinstance(value, list) else []):
+        strategy = str(item.get("merge_strategy", "score_max"))
+        rerank = bool(item.get("rerank", False))
+        if strategy not in PLANNER_MERGE_STRATEGIES:
+            raise ValueError(f"Unsupported planner merge strategy: {strategy}")
+        variants.append(
+            {
+                "name": str(item.get("name") or f"{strategy}{'_rerank' if rerank else ''}_{idx + 1}"),
+                "merge_strategy": strategy,
+                "rerank": rerank,
+                "route_vote_bonus": float(item.get("route_vote_bonus", route_vote_bonus)),
+                "rerank_overlap_weight": float(item.get("rerank_overlap_weight", rerank_overlap_weight)),
+            }
+        )
+    return variants
+
+
+def _run_planner_case(
+    store: ArtifactStore,
+    case: Dict[str, Any],
+    manifest: Dict[str, Any],
+    top_k: int,
+    merge_strategy: str,
+    rerank: bool,
+    route_vote_bonus: float,
+    rerank_overlap_weight: float,
+) -> Dict[str, Any]:
+    document_id = case.get("document_id") or manifest.get("document_id")
+    document_ids = case.get("document_ids") or manifest.get("document_ids")
+    if document_id:
+        document_ids = [document_id]
+    if not document_ids:
+        raise ValueError("Planner sweep cases need document_id/document_ids, or manifest top-level document_id/document_ids.")
+
+    if len(document_ids) == 1:
+        evidence, steps = search_document(
+            store,
+            document_ids[0],
+            case["query"],
+            mode="planner",
+            top_k=top_k,
+            planner_merge_strategy=merge_strategy,
+            planner_rerank=rerank,
+            planner_route_vote_bonus=route_vote_bonus,
+            planner_rerank_overlap_weight=rerank_overlap_weight,
+        )
+    else:
+        evidence, steps = search_corpus(
+            store,
+            document_ids,
+            case["query"],
+            mode="planner",
+            top_k=top_k,
+            planner_merge_strategy=merge_strategy,
+            planner_rerank=rerank,
+            planner_route_vote_bonus=route_vote_bonus,
+            planner_rerank_overlap_weight=rerank_overlap_weight,
+        )
+    knowledge_card = build_knowledge_card(case["query"], evidence).to_dict()
+    expected_terms = case.get("expected_terms", [])
+    expected_pages = case.get("expected_pages", [])
+    return {
+        "query": case["query"],
+        "document_id": document_ids[0] if len(document_ids) == 1 else None,
+        "document_ids": document_ids,
+        "term_hit": _contains_expected_terms(evidence, expected_terms),
+        "page_hit": _hits_expected_page(evidence, expected_pages),
+        "citation_supported": _has_supported_citations(knowledge_card),
+        "answerable": bool(knowledge_card.get("answerable")),
+        "confidence": float(knowledge_card.get("confidence", 0.0)),
+        "reciprocal_rank": _reciprocal_rank(evidence, expected_terms, expected_pages),
+        "top_score": evidence[0].score if evidence else 0.0,
+        "steps": steps,
+        "hits": [item.to_dict() for item in evidence],
+    }
+
+
+def _planner_sweep_summary(
+    store: ArtifactStore,
+    manifest: Dict[str, Any],
+    cases: List[Dict[str, Any]],
+    top_k: int,
+    variants: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    if not variants:
+        return {"available": False, "reason": "planner sweep was not requested"}
+
+    variant_reports = []
+    for variant in variants:
+        rows = [
+            _run_planner_case(
+                store,
+                case,
+                manifest,
+                top_k,
+                merge_strategy=variant["merge_strategy"],
+                rerank=variant["rerank"],
+                route_vote_bonus=float(variant["route_vote_bonus"]),
+                rerank_overlap_weight=float(variant["rerank_overlap_weight"]),
+            )
+            for case in cases
+        ]
+        total = len(rows) or 1
+        metrics = {
+            "term_hit_rate": sum(1 for row in rows if row["term_hit"]) / total,
+            "page_hit_rate": sum(1 for row in rows if row["page_hit"]) / total,
+            "citation_support_rate": sum(1 for row in rows if row["citation_supported"]) / total,
+            "answerable_rate": sum(1 for row in rows if row["answerable"]) / total,
+            "avg_confidence": sum(row["confidence"] for row in rows) / total,
+            "mrr": sum(row["reciprocal_rank"] for row in rows) / total,
+            "avg_top_score": sum(row["top_score"] for row in rows) / total,
+            "query_count": len(rows),
+        }
+        variant_reports.append({**variant, "metrics": metrics, "results": rows})
+
+    best_by_mrr = max(variant_reports, key=lambda item: item["metrics"]["mrr"])
+    best_by_confidence = max(variant_reports, key=lambda item: item["metrics"]["avg_confidence"])
+    return {
+        "available": True,
+        "variants": variant_reports,
+        "best_by_mrr": best_by_mrr["name"],
+        "best_by_confidence": best_by_confidence["name"],
+    }
+
+
 def run_eval(
     manifest_path: str,
     store: Optional[ArtifactStore] = None,
     top_k: int = 5,
     modes: Optional[List[str]] = None,
+    planner_merge_strategy: str = "score_max",
+    planner_rerank: bool = False,
+    planner_route_vote_bonus: float = DEFAULT_ROUTE_VOTE_BONUS,
+    planner_rerank_overlap_weight: float = DEFAULT_RERANK_OVERLAP_WEIGHT,
+    planner_sweep: Any = False,
 ) -> Dict[str, Any]:
     store = store or ArtifactStore()
     modes = modes or list(RETRIEVAL_MODES)
     manifest = _load_manifest(manifest_path)
     cases = manifest.get("queries", [])
     results = []
+    planner_merge_strategy = str(manifest.get("planner_merge_strategy", planner_merge_strategy))
+    planner_rerank = bool(manifest.get("planner_rerank", planner_rerank))
+    planner_route_vote_bonus = float(manifest.get("planner_route_vote_bonus", planner_route_vote_bonus))
+    planner_rerank_overlap_weight = float(manifest.get("planner_rerank_overlap_weight", planner_rerank_overlap_weight))
+    planner_sweep_variants = _planner_sweep_variants(
+        manifest.get("planner_sweep", planner_sweep),
+        planner_route_vote_bonus,
+        planner_rerank_overlap_weight,
+    )
 
     for mode in modes:
         if mode not in RETRIEVAL_MODES:
             raise ValueError(f"Unsupported retrieval mode: {mode}")
+    if planner_merge_strategy not in PLANNER_MERGE_STRATEGIES:
+        raise ValueError(f"Unsupported planner merge strategy: {planner_merge_strategy}")
 
     for case in cases:
         document_id = case.get("document_id") or manifest.get("document_id")
@@ -151,10 +409,34 @@ def run_eval(
             )
 
         for mode in modes:
+            case_merge_strategy = str(case.get("planner_merge_strategy", planner_merge_strategy))
+            case_rerank = bool(case.get("planner_rerank", planner_rerank))
+            case_route_vote_bonus = float(case.get("planner_route_vote_bonus", planner_route_vote_bonus))
+            case_rerank_overlap_weight = float(case.get("planner_rerank_overlap_weight", planner_rerank_overlap_weight))
             if len(document_ids) == 1:
-                evidence, steps = search_document(store, document_ids[0], case["query"], mode=mode, top_k=top_k)
+                evidence, steps = search_document(
+                    store,
+                    document_ids[0],
+                    case["query"],
+                    mode=mode,
+                    top_k=top_k,
+                    planner_merge_strategy=case_merge_strategy,
+                    planner_rerank=case_rerank,
+                    planner_route_vote_bonus=case_route_vote_bonus,
+                    planner_rerank_overlap_weight=case_rerank_overlap_weight,
+                )
             else:
-                evidence, steps = search_corpus(store, document_ids, case["query"], mode=mode, top_k=top_k)
+                evidence, steps = search_corpus(
+                    store,
+                    document_ids,
+                    case["query"],
+                    mode=mode,
+                    top_k=top_k,
+                    planner_merge_strategy=case_merge_strategy,
+                    planner_rerank=case_rerank,
+                    planner_route_vote_bonus=case_route_vote_bonus,
+                    planner_rerank_overlap_weight=case_rerank_overlap_weight,
+                )
             knowledge_card = build_knowledge_card(case["query"], evidence).to_dict()
             expected_terms = case.get("expected_terms", [])
             expected_pages = case.get("expected_pages", [])
@@ -170,6 +452,10 @@ def run_eval(
                     "document_id": document_ids[0] if len(document_ids) == 1 else None,
                     "document_ids": document_ids,
                     "mode": mode,
+                    "planner_merge_strategy": case_merge_strategy if mode == "planner" else None,
+                    "planner_rerank": case_rerank if mode == "planner" else None,
+                    "planner_route_vote_bonus": case_route_vote_bonus if mode == "planner" else None,
+                    "planner_rerank_overlap_weight": case_rerank_overlap_weight if mode == "planner" else None,
                     "term_hit": term_hit,
                     "page_hit": page_hit,
                     "citation_supported": citation_supported,
@@ -201,11 +487,20 @@ def run_eval(
         "manifest": manifest_path,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "top_k": top_k,
+        "planner": {
+            "merge_strategy": planner_merge_strategy,
+            "rerank": planner_rerank,
+            "route_vote_bonus": planner_route_vote_bonus,
+            "rerank_overlap_weight": planner_rerank_overlap_weight,
+            "merge_strategies": list(PLANNER_MERGE_STRATEGIES),
+        },
         "metrics": {
             "query_count": len(results),
             "modes": metrics_by_mode,
             "planner_vs_static": _planner_static_comparison(metrics_by_mode),
             "graph_diagnostics": _graph_diagnostics_summary(results),
+            "graph_extraction": _graph_extraction_summary(store, manifest, cases),
+            "planner_sweep": _planner_sweep_summary(store, manifest, cases, top_k, planner_sweep_variants),
         },
         "results": results,
     }
@@ -218,6 +513,10 @@ def report_to_markdown(report: Dict[str, Any]) -> str:
         "# Evaluation Report",
         "",
         f"- Result rows: {metrics['query_count']}",
+        f"- Planner merge strategy: {report.get('planner', {}).get('merge_strategy', 'score_max')}",
+        f"- Planner rerank: {report.get('planner', {}).get('rerank', False)}",
+        f"- Planner route vote bonus: {report.get('planner', {}).get('route_vote_bonus', DEFAULT_ROUTE_VOTE_BONUS):.3f}",
+        f"- Planner rerank overlap weight: {report.get('planner', {}).get('rerank_overlap_weight', DEFAULT_RERANK_OVERLAP_WEIGHT):.3f}",
         "",
         "## Mode Metrics",
         "",
@@ -254,6 +553,32 @@ def report_to_markdown(report: Dict[str, Any]) -> str:
             delta = comparison["delta_vs_baseline_avg"][metric]
             lines.append(f"| {metric} | {planner_value:.3f} | {baseline_value:.3f} | {delta:+.3f} |")
 
+    planner_sweep = metrics.get("planner_sweep", {"available": False})
+    lines.extend([
+        "",
+        "## Planner Sweep",
+        "",
+    ])
+    if not planner_sweep.get("available"):
+        lines.append(f"- Not available: {planner_sweep.get('reason', 'planner sweep unavailable')}")
+    else:
+        lines.append(f"- Best by MRR: {planner_sweep['best_by_mrr']}")
+        lines.append(f"- Best by confidence: {planner_sweep['best_by_confidence']}")
+        lines.extend([
+            "",
+            "| Variant | Strategy | Rerank | Vote bonus | Overlap weight | MRR | Avg confidence | Term hit | Page hit |",
+            "|---|---|---:|---:|---:|---:|---:|---:|---:|",
+        ])
+        for variant in planner_sweep["variants"]:
+            variant_metrics = variant["metrics"]
+            lines.append(
+                f"| {variant['name']} | {variant['merge_strategy']} | {variant['rerank']} | "
+                f"{float(variant.get('route_vote_bonus', DEFAULT_ROUTE_VOTE_BONUS)):.3f} | "
+                f"{float(variant.get('rerank_overlap_weight', DEFAULT_RERANK_OVERLAP_WEIGHT)):.3f} | "
+                f"{variant_metrics['mrr']:.3f} | {variant_metrics['avg_confidence']:.3f} | "
+                f"{variant_metrics['term_hit_rate']:.3f} | {variant_metrics['page_hit_rate']:.3f} |"
+            )
+
     graph_diagnostics = metrics.get("graph_diagnostics", {"available": False})
     lines.extend([
         "",
@@ -272,6 +597,30 @@ def report_to_markdown(report: Dict[str, Any]) -> str:
                 f"{relation}={count}" for relation, count in graph_diagnostics["relation_counts"].items()
             )
             lines.append(f"- Expanded relations: {relation_summary}")
+
+    graph_extraction = metrics.get("graph_extraction", {"available": False})
+    lines.extend([
+        "",
+        "## Graph Extraction",
+        "",
+    ])
+    if not graph_extraction.get("available"):
+        lines.append(f"- Not available: {graph_extraction.get('reason', 'graph extraction summary unavailable')}")
+    else:
+        totals = graph_extraction["totals"]
+        lines.append(f"- Documents with graph artifacts: {graph_extraction['document_count']}")
+        lines.append(
+            f"- Totals: sections={totals['section_count']}, entities={totals['entity_count']}, "
+            f"references={totals['reference_count']}, edges={totals['edge_count']}"
+        )
+        for label, recall in graph_extraction.get("expected_recall", {}).items():
+            if recall.get("available"):
+                lines.append(
+                    f"- Expected {label} recall: {recall['hit_count']}/{recall['expected_count']} "
+                    f"({recall['recall']:.3f})"
+                )
+        if graph_extraction.get("missing_document_ids"):
+            lines.append(f"- Missing graph artifacts: {', '.join(graph_extraction['missing_document_ids'])}")
 
     lines.extend([
         "",

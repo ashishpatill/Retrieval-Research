@@ -10,7 +10,15 @@ from retrieval_research.chunking import chunk_document
 from retrieval_research.evidence import build_knowledge_card
 from retrieval_research.evaluation.runner import report_to_markdown, run_eval
 from retrieval_research.ingest import ingest_path
-from retrieval_research.retrieval import DEFAULT_COLPALI_MODEL, RETRIEVAL_MODES, build_indexes, search_corpus
+from retrieval_research.retrieval import (
+    DEFAULT_RERANK_OVERLAP_WEIGHT,
+    DEFAULT_ROUTE_VOTE_BONUS,
+    DEFAULT_COLPALI_MODEL,
+    PLANNER_MERGE_STRATEGIES,
+    RETRIEVAL_MODES,
+    build_indexes,
+    search_corpus,
+)
 from retrieval_research.schema import RetrievalResult, RetrievalTrace
 from retrieval_research.storage import ArtifactStore
 
@@ -85,7 +93,17 @@ def cmd_query(args: argparse.Namespace) -> None:
     if not document_ids:
         print("error: no documents found in store; ingest a document or pass --document-id", file=sys.stderr)
         raise SystemExit(2)
-    evidence, steps = search_corpus(store, document_ids, args.question, mode=args.mode, top_k=args.top_k)
+    evidence, steps = search_corpus(
+        store,
+        document_ids,
+        args.question,
+        mode=args.mode,
+        top_k=args.top_k,
+        planner_merge_strategy=args.planner_merge_strategy,
+        planner_rerank=args.planner_rerank,
+        planner_route_vote_bonus=args.planner_route_vote_bonus,
+        planner_rerank_overlap_weight=args.planner_rerank_overlap_weight,
+    )
     knowledge_card = build_knowledge_card(args.question, evidence)
     result = RetrievalResult(
         query=args.question,
@@ -110,7 +128,17 @@ def cmd_query(args: argparse.Namespace) -> None:
 
 def cmd_eval(args: argparse.Namespace) -> None:
     store = _store(args)
-    report = run_eval(args.manifest, store=store, top_k=args.top_k, modes=args.modes)
+    report = run_eval(
+        args.manifest,
+        store=store,
+        top_k=args.top_k,
+        modes=args.modes,
+        planner_merge_strategy=args.planner_merge_strategy,
+        planner_rerank=args.planner_rerank,
+        planner_route_vote_bonus=args.planner_route_vote_bonus,
+        planner_rerank_overlap_weight=args.planner_rerank_overlap_weight,
+        planner_sweep=args.planner_sweep,
+    )
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     json_path = store.save_run(run_id, "eval_report.json", report)
     md_path = Path(args.store) / "runs" / run_id / "eval_report.md"
@@ -164,12 +192,21 @@ def build_parser() -> argparse.ArgumentParser:
     query.add_argument("--document-id")
     query.add_argument("--top-k", type=_positive_int, default=5)
     query.add_argument("--mode", choices=RETRIEVAL_MODES, default="hybrid")
+    query.add_argument("--planner-merge-strategy", choices=PLANNER_MERGE_STRATEGIES, default="score_max")
+    query.add_argument("--planner-rerank", action="store_true", help="Apply lightweight query-overlap reranking to planner merges")
+    query.add_argument("--planner-route-vote-bonus", type=float, default=DEFAULT_ROUTE_VOTE_BONUS)
+    query.add_argument("--planner-rerank-overlap-weight", type=float, default=DEFAULT_RERANK_OVERLAP_WEIGHT)
     query.set_defaults(func=cmd_query)
 
     eval_parser = sub.add_parser("eval", help="Run a retrieval eval manifest")
     eval_parser.add_argument("manifest")
     eval_parser.add_argument("--top-k", type=_positive_int, default=5)
     eval_parser.add_argument("--modes", nargs="+", choices=RETRIEVAL_MODES, default=["bm25", "dense", "late", "hybrid", "planner"])
+    eval_parser.add_argument("--planner-merge-strategy", choices=PLANNER_MERGE_STRATEGIES, default="score_max")
+    eval_parser.add_argument("--planner-rerank", action="store_true", help="Apply lightweight query-overlap reranking to planner merges")
+    eval_parser.add_argument("--planner-route-vote-bonus", type=float, default=DEFAULT_ROUTE_VOTE_BONUS)
+    eval_parser.add_argument("--planner-rerank-overlap-weight", type=float, default=DEFAULT_RERANK_OVERLAP_WEIGHT)
+    eval_parser.add_argument("--planner-sweep", action="store_true", help="Benchmark all planner merge/rerank variants")
     eval_parser.set_defaults(func=cmd_eval)
 
     return parser

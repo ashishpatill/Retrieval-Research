@@ -9,9 +9,23 @@ from retrieval_research.schema import Chunk, Evidence
 
 TOKEN_RE = re.compile(r"[a-z0-9_]+")
 ENTITY_RE = re.compile(r"\b(?:[A-Z][A-Za-z0-9&.-]*|[A-Z]{2,})(?:\s+(?:[A-Z][A-Za-z0-9&.-]*|[A-Z]{2,})){0,3}\b")
+ACRONYM_DEF_RE = re.compile(
+    r"\b([A-Z][A-Za-z0-9&.-]+(?:\s+[A-Z][A-Za-z0-9&.-]+){1,6})\s*\(([A-Z][A-Z0-9-]{1,12})\)"
+)
+REVERSED_ACRONYM_DEF_RE = re.compile(
+    r"\b([A-Z][A-Z0-9-]{1,12})\s*\(([A-Z][A-Za-z0-9&.-]+(?:\s+[A-Z][A-Za-z0-9&.-]+){1,6})\)"
+)
+QUOTED_ENTITY_RE = re.compile(r"[\"'`]([A-Za-z][A-Za-z0-9&./_-]+(?:\s+[A-Za-z0-9&./_-]+){1,5})[\"'`]")
 SECTION_REF_RE = re.compile(r"\b(?:section|chapter|appendix)\s+([A-Z0-9][A-Za-z0-9 ._-]{0,60})", re.IGNORECASE)
-NUMBERED_REF_RE = re.compile(r"\b(figure|fig\.|table|page|eq\.|equation)\s*([A-Z]?\d+(?:\.\d+)*)", re.IGNORECASE)
+NUMBERED_REF_RE = re.compile(
+    r"\b(figure|fig\.|table|page|eq\.|equation)s?\s*([A-Z]?\d+(?:\.\d+)*(?:\s*(?:-|to|and|,)\s*[A-Z]?\d+(?:\.\d+)*)*)",
+    re.IGNORECASE,
+)
 CITATION_REF_RE = re.compile(r"\[(\d{1,3})\]")
+DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:A-Z0-9]+\b", re.IGNORECASE)
+ARXIV_RE = re.compile(r"\barXiv:\s*([0-9]{4}\.[0-9]{4,5}(?:v\d+)?)\b", re.IGNORECASE)
+URL_RE = re.compile(r"\bhttps?://[^\s)>\]]+")
+NUMERIC_VALUE_RE = re.compile(r"[A-Z]?\d+(?:\.\d+)*")
 
 ENTITY_STOPWORDS = {
     "A",
@@ -30,11 +44,20 @@ def _tokens(text: str) -> set[str]:
     return set(TOKEN_RE.findall(text.lower()))
 
 
+def _clean_entity(value: str) -> str | None:
+    cleaned = " ".join(value.strip(" \t\n\r.,;:()[]{}").split())
+    if len(cleaned) < 3 or cleaned in ENTITY_STOPWORDS:
+        return None
+    if cleaned.lower() in {word.lower() for word in ENTITY_STOPWORDS}:
+        return None
+    return cleaned
+
+
 def _entities(text: str) -> set[str]:
     entities = set()
     for match in ENTITY_RE.finditer(text):
-        value = " ".join(match.group(0).split())
-        if len(value) < 3 or value in ENTITY_STOPWORDS:
+        value = _clean_entity(match.group(0))
+        if not value:
             continue
         entities.add(value)
         parts = value.split()
@@ -43,27 +66,62 @@ def _entities(text: str) -> set[str]:
                 sub_value = " ".join(parts[start:end])
                 if len(sub_value) >= 3 and sub_value not in ENTITY_STOPWORDS:
                     entities.add(sub_value)
+    for pattern in (ACRONYM_DEF_RE, REVERSED_ACRONYM_DEF_RE):
+        for full_name, acronym in pattern.findall(text):
+            for value in (full_name, acronym):
+                cleaned = _clean_entity(value)
+                if cleaned:
+                    entities.add(cleaned)
+    for value in QUOTED_ENTITY_RE.findall(text):
+        cleaned = _clean_entity(value)
+        if cleaned:
+            entities.add(cleaned)
     return entities
+
+
+def _number_values(value: str) -> set[str]:
+    return {match.group(0).lower() for match in NUMERIC_VALUE_RE.finditer(value)}
+
+
+def _section_aliases(section: str | None) -> set[str]:
+    key = _section_key(section)
+    if not key:
+        return set()
+    aliases = {key}
+    match = re.match(r"^([a-z]?\d+(?:\.\d+)*)(?:\s+(.+))?$", key)
+    if match:
+        aliases.add(match.group(1))
+        if match.group(2):
+            aliases.add(match.group(2).strip())
+    return {alias for alias in aliases if alias}
 
 
 def _references(text: str) -> set[str]:
     refs = set()
-    for kind, number in NUMBERED_REF_RE.findall(text):
+    for kind, numbers in NUMBERED_REF_RE.findall(text):
         normalized_kind = "figure" if kind.lower() == "fig." else kind.lower()
-        refs.add(f"{normalized_kind}:{number.lower()}")
+        normalized_kind = "equation" if normalized_kind == "eq." else normalized_kind
+        for number in _number_values(numbers):
+            refs.add(f"{normalized_kind}:{number}")
     for value in CITATION_REF_RE.findall(text):
         refs.add(f"citation:{value}")
+    for value in DOI_RE.findall(text):
+        refs.add(f"doi:{value.rstrip('.,;').lower()}")
+    for value in ARXIV_RE.findall(text):
+        refs.add(f"arxiv:{value.lower()}")
+    for value in URL_RE.findall(text):
+        refs.add(f"url:{value.rstrip('.,;').lower()}")
     for value in SECTION_REF_RE.findall(text):
-        label = re.split(r"[,.;\n]", value.strip(), maxsplit=1)[0].strip()
-        if label:
-            refs.add(f"section:{label.lower()}")
+        label = re.split(r"[,;\n]", value.strip(), maxsplit=1)[0].strip()
+        for alias in _section_aliases(label):
+            refs.add(f"section:{alias}")
     return refs
 
 
 def _section_key(section: str | None) -> str | None:
     if not section:
         return None
-    return re.sub(r"\s+", " ", section.strip()).lower()
+    return re.sub(r"\s+", " ", section.strip(" \t\n\r.,;:()[]{}")).lower()
 
 
 def _add_edge(edges: dict[str, list[dict]], source: str, target: str, relation: str, weight: float, **metadata: object) -> None:
@@ -99,15 +157,18 @@ class GraphIndex:
             section = _section_key(chunk.parent_section)
             if section:
                 by_section[section].append(chunk)
-                reference_targets[f"section:{section}"].append(chunk)
+                for alias in _section_aliases(chunk.parent_section):
+                    reference_targets[f"section:{alias}"].append(chunk)
             for entity in _entities(chunk.text):
                 by_entity[entity].append(chunk)
             for ref in _references(chunk.text):
                 reference_sources[ref].append(chunk)
-            for kind, number in NUMBERED_REF_RE.findall(chunk.text):
+            for kind, numbers in NUMBERED_REF_RE.findall(chunk.text):
                 normalized_kind = "figure" if kind.lower() == "fig." else kind.lower()
+                normalized_kind = "equation" if normalized_kind == "eq." else normalized_kind
                 if normalized_kind in {"figure", "table", "equation"}:
-                    reference_targets[f"{normalized_kind}:{number.lower()}"].append(chunk)
+                    for number in _number_values(numbers):
+                        reference_targets[f"{normalized_kind}:{number}"].append(chunk)
 
         ordered = sorted(chunks, key=lambda chunk: chunk.chunk_index)
         for left, right in zip(ordered, ordered[1:]):

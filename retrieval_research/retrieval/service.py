@@ -9,13 +9,15 @@ from retrieval_research.retrieval.dense import DenseIndex
 from retrieval_research.retrieval.graph import GraphIndex
 from retrieval_research.retrieval.hybrid import reciprocal_rank_fusion
 from retrieval_research.retrieval.late import LateInteractionIndex
-from retrieval_research.retrieval.planner import plan_query
+from retrieval_research.retrieval.planner import PLANNER_MERGE_STRATEGIES, plan_query
 from retrieval_research.retrieval.visual import VisualPageIndex, load_visual_index
 from retrieval_research.schema import Evidence
 from retrieval_research.storage import ArtifactStore
 
 
 RETRIEVAL_MODES = ("bm25", "dense", "late", "hybrid", "visual", "graph", "planner")
+DEFAULT_ROUTE_VOTE_BONUS = 0.08
+DEFAULT_RERANK_OVERLAP_WEIGHT = 0.15
 
 TOKEN_RE = re.compile(r"[a-z0-9_]+")
 
@@ -39,7 +41,36 @@ def _has_negation(text: str) -> bool:
     return bool(_tokens(text) & terms)
 
 
-def _consolidate_planner_hits(hits: List[Evidence], top_k: int, query_type: str, planner_reason: str) -> tuple[List[Evidence], dict]:
+def _planner_rank_score(
+    item: Evidence,
+    routes: set[str],
+    query: str,
+    merge_strategy: str,
+    rerank: bool,
+    route_vote_bonus: float,
+    rerank_overlap_weight: float,
+) -> float:
+    score = item.score
+    if merge_strategy == "route_vote":
+        score += route_vote_bonus * max(0, len(routes) - 1)
+    if rerank:
+        score += rerank_overlap_weight * _text_overlap(query, item.text)
+    return score
+
+
+def _consolidate_planner_hits(
+    hits: List[Evidence],
+    top_k: int,
+    query_type: str,
+    planner_reason: str,
+    query: str = "",
+    merge_strategy: str = "score_max",
+    rerank: bool = False,
+    route_vote_bonus: float = DEFAULT_ROUTE_VOTE_BONUS,
+    rerank_overlap_weight: float = DEFAULT_RERANK_OVERLAP_WEIGHT,
+) -> tuple[List[Evidence], dict]:
+    if merge_strategy not in PLANNER_MERGE_STRATEGIES:
+        raise ValueError(f"Unsupported planner merge strategy: {merge_strategy}")
     by_chunk: dict[str, Evidence] = {}
     chunk_routes: dict[str, set[str]] = {}
     for item in hits:
@@ -48,7 +79,19 @@ def _consolidate_planner_hits(hits: List[Evidence], top_k: int, query_type: str,
             by_chunk[item.chunk_id] = item
         chunk_routes.setdefault(item.chunk_id, set()).add(item.retrieval_path)
 
-    ranked = sorted(by_chunk.values(), key=lambda item: item.score, reverse=True)
+    rank_scores = {
+        chunk_id: _planner_rank_score(
+            item,
+            chunk_routes.get(chunk_id, set()),
+            query,
+            merge_strategy,
+            rerank,
+            route_vote_bonus,
+            rerank_overlap_weight,
+        )
+        for chunk_id, item in by_chunk.items()
+    }
+    ranked = sorted(by_chunk.values(), key=lambda item: rank_scores.get(item.chunk_id, item.score), reverse=True)
     selected = ranked[: max(top_k, 8)]
     redundancies = []
     conflicts = []
@@ -77,12 +120,18 @@ def _consolidate_planner_hits(hits: List[Evidence], top_k: int, query_type: str,
                 document_id=item.document_id,
                 page_numbers=item.page_numbers,
                 text=item.text,
-                score=item.score,
+                score=rank_scores.get(item.chunk_id, item.score),
                 retrieval_path=f"planner:{item.retrieval_path}",
                 metadata={
                     **item.metadata,
                     "query_type": query_type,
                     "planner_reason": planner_reason,
+                    "source_score": item.score,
+                    "merge_rank_score": rank_scores.get(item.chunk_id, item.score),
+                    "merge_strategy": merge_strategy,
+                    "reranked": rerank,
+                    "route_vote_bonus": route_vote_bonus,
+                    "rerank_overlap_weight": rerank_overlap_weight,
                     "source_paths": sorted(chunk_routes.get(item.chunk_id, set())),
                 },
             )
@@ -92,6 +141,9 @@ def _consolidate_planner_hits(hits: List[Evidence], top_k: int, query_type: str,
         "input_hits": len(hits),
         "unique_chunks": len(by_chunk),
         "kept_hits": len(planner_hits),
+        "reranked": rerank,
+        "route_vote_bonus": route_vote_bonus,
+        "rerank_overlap_weight": rerank_overlap_weight,
         "redundancy_groups": len(redundancies),
         "conflicts_detected": len(conflicts),
         "redundancies": [
@@ -191,12 +243,96 @@ def _search_corpus_graph(
     return hits, steps
 
 
+def _search_corpus_planner(
+    store: ArtifactStore,
+    document_ids: List[str],
+    query: str,
+    top_k: int,
+    planner_merge_strategy: str = "score_max",
+    planner_rerank: bool = False,
+    planner_route_vote_bonus: float = DEFAULT_ROUTE_VOTE_BONUS,
+    planner_rerank_overlap_weight: float = DEFAULT_RERANK_OVERLAP_WEIGHT,
+) -> Tuple[List[Evidence], List[dict]]:
+    plan = plan_query(query, merge_strategy=planner_merge_strategy)
+    all_hits: List[Evidence] = []
+    steps: List[dict] = [
+        {
+            "path": "planner",
+            "document_ids": document_ids,
+            "rerank": planner_rerank,
+            "route_vote_bonus": planner_route_vote_bonus,
+            "rerank_overlap_weight": planner_rerank_overlap_weight,
+            **plan.to_dict(),
+        }
+    ]
+
+    for route in plan.routes:
+        route_settings = plan.route_settings.get(route, {})
+        factor = float(route_settings.get("top_k_factor", 2.0))
+        route_top_k = max(top_k, int(round(top_k * factor)))
+        try:
+            hits, route_steps = search_corpus(store, document_ids, query, mode=route, top_k=route_top_k)
+        except FileNotFoundError:
+            steps.append(
+                {
+                    "path": route,
+                    "document_ids": document_ids,
+                    "hits": 0,
+                    "error": "missing_index",
+                }
+            )
+            continue
+
+        steps.append(
+            {
+                "path": "planner_route",
+                "document_ids": document_ids,
+                "route": route,
+                "requested_top_k": top_k,
+                "route_top_k": route_top_k,
+                "settings": route_settings,
+            }
+        )
+        all_hits.extend(hits)
+        steps.extend(route_steps)
+
+    if not all_hits:
+        return [], steps
+
+    planner_hits, merge_stats = _consolidate_planner_hits(
+        all_hits,
+        top_k=top_k,
+        query_type=plan.query_type,
+        planner_reason=plan.reason,
+        query=query,
+        merge_strategy=plan.merge_strategy,
+        rerank=planner_rerank,
+        route_vote_bonus=planner_route_vote_bonus,
+        rerank_overlap_weight=planner_rerank_overlap_weight,
+    )
+    steps.append(
+        {
+            "path": "planner_merge",
+            "document_ids": document_ids,
+            "hits": len(planner_hits),
+            "requested_top_k": top_k,
+            "merge_strategy": plan.merge_strategy,
+            **merge_stats,
+        }
+    )
+    return planner_hits, steps
+
+
 def search_document(
     store: ArtifactStore,
     document_id: str,
     query: str,
     mode: str = "hybrid",
     top_k: int = 5,
+    planner_merge_strategy: str = "score_max",
+    planner_rerank: bool = False,
+    planner_route_vote_bonus: float = DEFAULT_ROUTE_VOTE_BONUS,
+    planner_rerank_overlap_weight: float = DEFAULT_RERANK_OVERLAP_WEIGHT,
 ) -> Tuple[List[Evidence], List[dict]]:
     steps = []
     if mode == "bm25":
@@ -253,9 +389,18 @@ def search_document(
         return hits, steps
 
     if mode == "planner":
-        plan = plan_query(query)
+        plan = plan_query(query, merge_strategy=planner_merge_strategy)
         all_hits: List[Evidence] = []
-        steps.append({"path": "planner", "document_id": document_id, **plan.to_dict()})
+        steps.append(
+            {
+                "path": "planner",
+                "document_id": document_id,
+                "rerank": planner_rerank,
+                "route_vote_bonus": planner_route_vote_bonus,
+                "rerank_overlap_weight": planner_rerank_overlap_weight,
+                **plan.to_dict(),
+            }
+        )
         for route in plan.routes:
             route_settings = plan.route_settings.get(route, {})
             factor = float(route_settings.get("top_k_factor", 2.0))
@@ -280,7 +425,15 @@ def search_document(
         if not all_hits:
             return [], steps
         planner_hits, merge_stats = _consolidate_planner_hits(
-            all_hits, top_k=top_k, query_type=plan.query_type, planner_reason=plan.reason
+            all_hits,
+            top_k=top_k,
+            query_type=plan.query_type,
+            planner_reason=plan.reason,
+            query=query,
+            merge_strategy=plan.merge_strategy,
+            rerank=planner_rerank,
+            route_vote_bonus=planner_route_vote_bonus,
+            rerank_overlap_weight=planner_rerank_overlap_weight,
         )
         steps.append(
             {
@@ -303,7 +456,23 @@ def search_corpus(
     query: str,
     mode: str = "hybrid",
     top_k: int = 5,
+    planner_merge_strategy: str = "score_max",
+    planner_rerank: bool = False,
+    planner_route_vote_bonus: float = DEFAULT_ROUTE_VOTE_BONUS,
+    planner_rerank_overlap_weight: float = DEFAULT_RERANK_OVERLAP_WEIGHT,
 ) -> Tuple[List[Evidence], List[dict]]:
+    if mode == "planner" and len(document_ids) > 1:
+        return _search_corpus_planner(
+            store,
+            document_ids,
+            query,
+            top_k=top_k,
+            planner_merge_strategy=planner_merge_strategy,
+            planner_rerank=planner_rerank,
+            planner_route_vote_bonus=planner_route_vote_bonus,
+            planner_rerank_overlap_weight=planner_rerank_overlap_weight,
+        )
+
     if mode == "graph" and len(document_ids) > 1:
         return _search_corpus_graph(store, document_ids, query, top_k=top_k)
 
@@ -311,7 +480,17 @@ def search_corpus(
     steps: List[dict] = []
     for document_id in document_ids:
         try:
-            hits, doc_steps = search_document(store, document_id, query, mode=mode, top_k=top_k)
+            hits, doc_steps = search_document(
+                store,
+                document_id,
+                query,
+                mode=mode,
+                top_k=top_k,
+                planner_merge_strategy=planner_merge_strategy,
+                planner_rerank=planner_rerank,
+                planner_route_vote_bonus=planner_route_vote_bonus,
+                planner_rerank_overlap_weight=planner_rerank_overlap_weight,
+            )
         except FileNotFoundError:
             steps.append({"path": mode, "document_id": document_id, "hits": 0, "error": "missing_index"})
             continue

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Dict, List
 
 
+PLANNER_MERGE_STRATEGIES = ("score_max", "route_vote")
 TABLE_TERMS = {"table", "row", "column", "cell", "invoice", "form", "total", "amount", "spreadsheet"}
 VISUAL_TERMS = {
     "figure",
@@ -20,7 +21,19 @@ VISUAL_TERMS = {
     "scan",
     "handwriting",
 }
-MULTIHOP_TERMS = {"compare", "contrast", "relationship", "across", "between", "summarize", "synthesis"}
+MULTIHOP_TERMS = {
+    "compare",
+    "contrast",
+    "relationship",
+    "across",
+    "between",
+    "cross",
+    "corpus",
+    "documents",
+    "multi",
+    "summarize",
+    "synthesis",
+}
 GRAPH_TERMS = {"section", "reference", "entity", "topic", "related", "neighbor", "context"}
 
 
@@ -62,7 +75,9 @@ def _settings_for(query_type: str, routes: List[str]) -> Dict[str, dict]:
     return settings
 
 
-def plan_query(query: str) -> QueryPlan:
+def plan_query(query: str, merge_strategy: str = "score_max") -> QueryPlan:
+    if merge_strategy not in PLANNER_MERGE_STRATEGIES:
+        raise ValueError(f"Unsupported planner merge strategy: {merge_strategy}")
     normalized = query.lower()
     terms = set(re.findall(r"[a-z0-9_]+", normalized))
 
@@ -73,7 +88,7 @@ def plan_query(query: str) -> QueryPlan:
             routes=routes,
             reason="visual/layout terms detected",
             route_settings=_settings_for("visual", routes),
-            merge_strategy="score_max",
+            merge_strategy=merge_strategy,
         )
     if terms & TABLE_TERMS:
         routes = ["bm25", "late", "hybrid"]
@@ -82,7 +97,7 @@ def plan_query(query: str) -> QueryPlan:
             routes=routes,
             reason="table/form terms detected",
             route_settings=_settings_for("table_or_form", routes),
-            merge_strategy="score_max",
+            merge_strategy=merge_strategy,
         )
     if terms & (MULTIHOP_TERMS | GRAPH_TERMS):
         routes = ["hybrid", "dense", "late", "graph"]
@@ -91,7 +106,7 @@ def plan_query(query: str) -> QueryPlan:
             routes=routes,
             reason="synthesis, graph, or neighborhood terms detected",
             route_settings=_settings_for("multi_hop", routes),
-            merge_strategy="score_max",
+            merge_strategy=merge_strategy,
         )
     if re.search(r"\b[A-Z]{2,}[-_ ]?\d+\b", query) or re.search(r"\d", query):
         routes = ["bm25", "late", "hybrid"]
@@ -100,7 +115,7 @@ def plan_query(query: str) -> QueryPlan:
             routes=routes,
             reason="identifier or numeric lookup detected",
             route_settings=_settings_for("exact_lookup", routes),
-            merge_strategy="score_max",
+            merge_strategy=merge_strategy,
         )
     routes = ["hybrid"]
     return QueryPlan(
@@ -108,5 +123,5 @@ def plan_query(query: str) -> QueryPlan:
         routes=routes,
         reason="default semantic retrieval route",
         route_settings=_settings_for("semantic", routes),
-        merge_strategy="score_max",
+        merge_strategy=merge_strategy,
     )
