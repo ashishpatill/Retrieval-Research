@@ -31,6 +31,7 @@ type EvidenceItem = {
 type TraceStep = {
   path?: string;
   document_id?: string;
+  document_ids?: string[];
   hits?: number;
   diagnostics?: {
     node_count?: number;
@@ -46,21 +47,53 @@ type TraceStep = {
 };
 
 function GraphDiagnostics({ payload }: { payload: ResultPayload }) {
-  const graphSteps = (payload.trace.steps ?? []).filter((step) => step.path === "graph" && step.diagnostics);
+  const [relationFilter, setRelationFilter] = useState("all");
+  const graphSteps = (payload.trace.steps ?? []).filter(
+    (step) => (step.path === "graph" || step.path === "graph_corpus") && step.diagnostics,
+  );
   const graphEvidence = (payload.result.evidence ?? []).filter((item) => item.metadata?.graph_relations?.length);
 
   if (!graphSteps.length && !graphEvidence.length) {
     return null;
   }
 
-  const relationCounts = graphSteps[0]?.diagnostics?.expanded_relation_counts ?? graphSteps[0]?.diagnostics?.relation_counts ?? {};
+  const relationCounts = graphSteps.reduce<Record<string, number>>((acc, step) => {
+    const counts = step.diagnostics?.expanded_relation_counts ?? step.diagnostics?.relation_counts ?? {};
+    for (const [relation, count] of Object.entries(counts)) {
+      acc[relation] = (acc[relation] ?? 0) + count;
+    }
+    return acc;
+  }, {});
   const relationRows = Object.entries(relationCounts).sort((left, right) => right[1] - left[1]);
+  const filteredEvidence =
+    relationFilter === "all"
+      ? graphEvidence
+      : graphEvidence.filter((item) => item.metadata?.graph_relations?.includes(relationFilter));
 
   return (
     <section className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900 p-4 lg:col-span-2">
-      <h3 className="text-sm font-semibold text-zinc-100">Graph diagnostics</h3>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h3 className="text-sm font-semibold text-zinc-100">Graph diagnostics</h3>
+        {relationRows.length ? (
+          <select
+            value={relationFilter}
+            onChange={(event) => setRelationFilter(event.target.value)}
+            className="rounded-md border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-100"
+          >
+            <option value="all">All relations</option>
+            {relationRows.map(([relation]) => (
+              <option key={relation} value={relation}>
+                {relation}
+              </option>
+            ))}
+          </select>
+        ) : null}
+      </div>
       {graphSteps.map((step, index) => (
-        <div key={`${step.document_id ?? "doc"}-${index}`} className="grid gap-2 text-xs text-zinc-300 sm:grid-cols-4">
+        <div
+          key={`${step.document_id ?? step.document_ids?.join("-") ?? "doc"}-${index}`}
+          className="grid gap-2 text-xs text-zinc-300 sm:grid-cols-4"
+        >
           <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
             <p className="text-zinc-500">Nodes</p>
             <p className="text-zinc-100">{step.diagnostics?.node_count ?? 0}</p>
@@ -81,22 +114,26 @@ function GraphDiagnostics({ payload }: { payload: ResultPayload }) {
       ))}
       {relationRows.length ? (
         <div className="flex flex-wrap gap-2">
-          {relationRows.map(([relation, count]) => (
-            <span key={relation} className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-300">
-              {relation}: {count}
-            </span>
-          ))}
+          {relationRows
+            .filter(([relation]) => relationFilter === "all" || relation === relationFilter)
+            .map(([relation, count]) => (
+              <span key={relation} className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-300">
+                {relation}: {count}
+              </span>
+            ))}
         </div>
       ) : null}
-      {graphEvidence.length ? (
+      {filteredEvidence.length ? (
         <div className="space-y-2">
-          {graphEvidence.slice(0, 5).map((item) => (
+          {filteredEvidence.slice(0, 5).map((item) => (
             <div key={item.chunk_id} className="rounded-md border border-zinc-800 bg-zinc-950 p-2 text-xs text-zinc-300">
               <p className="text-zinc-100">{item.chunk_id}</p>
               <p>Relations: {item.metadata?.graph_relations?.join(", ")}</p>
             </div>
           ))}
         </div>
+      ) : graphEvidence.length ? (
+        <p className="text-xs text-zinc-500">No evidence matched the selected relation.</p>
       ) : null}
     </section>
   );
@@ -107,6 +144,10 @@ export function QueryWorkbench() {
   const [documentId, setDocumentId] = useState("");
   const [mode, setMode] = useState("planner");
   const [topK, setTopK] = useState(5);
+  const [plannerMergeStrategy, setPlannerMergeStrategy] = useState("score_max");
+  const [plannerRerank, setPlannerRerank] = useState(false);
+  const [plannerRouteVoteBonus, setPlannerRouteVoteBonus] = useState(0.08);
+  const [plannerRerankOverlapWeight, setPlannerRerankOverlapWeight] = useState(0.15);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [payload, setPayload] = useState<ResultPayload | null>(null);
@@ -125,6 +166,10 @@ export function QueryWorkbench() {
           document_id: documentId || null,
           mode,
           top_k: topK,
+          planner_merge_strategy: plannerMergeStrategy,
+          planner_rerank: plannerRerank,
+          planner_route_vote_bonus: plannerRouteVoteBonus,
+          planner_rerank_overlap_weight: plannerRerankOverlapWeight,
         }),
       });
       const data = await response.json();
@@ -179,6 +224,46 @@ export function QueryWorkbench() {
             className="rounded-md border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-100"
           />
         </div>
+        {mode === "planner" ? (
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <select
+              value={plannerMergeStrategy}
+              onChange={(event) => setPlannerMergeStrategy(event.target.value)}
+              className="rounded-md border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-100"
+            >
+              <option value="score_max">score_max merge</option>
+              <option value="route_vote">route_vote merge</option>
+            </select>
+            <label className="flex items-center gap-2 rounded-md border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-300">
+              <input
+                type="checkbox"
+                checked={plannerRerank}
+                onChange={(event) => setPlannerRerank(event.target.checked)}
+              />
+              Query-overlap rerank
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={1}
+              step={0.01}
+              value={plannerRouteVoteBonus}
+              onChange={(event) => setPlannerRouteVoteBonus(Number(event.target.value))}
+              className="rounded-md border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-100"
+              placeholder="Route vote bonus"
+            />
+            <input
+              type="number"
+              min={0}
+              max={1}
+              step={0.01}
+              value={plannerRerankOverlapWeight}
+              onChange={(event) => setPlannerRerankOverlapWeight(Number(event.target.value))}
+              className="rounded-md border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-100"
+              placeholder="Rerank overlap weight"
+            />
+          </div>
+        ) : null}
         <button
           type="submit"
           disabled={isSubmitting}
