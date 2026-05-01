@@ -1,0 +1,61 @@
+{
+  "document_ids": [
+    "replace-with-document-id-1",
+    "replace-with-document-id-2",
+    "replace-with-document-id-3"
+  ],
+  "planner_merge_strategy": "score_max",
+  "planner_rerank": false,
+  "planner_route_vote_bonus": 0.08,
+  "planner_rerank_overlap_weight": 0.15,
+  "planner_sweep": [
+    {
+      "name": "score_base",
+      "merge_strategy": "score_max",
+      "rerank": false
+    },
+    {
+      "name": "score_rerank_soft",
+      "merge_strategy": "score_max",
+      "rerank": true,
+      "rerank_overlap_weight": 0.1
+    },
+    {
+      "name": "route_vote_mid",
+      "merge_strategy": "route_vote",
+      "rerank": false,
+      "route_vote_bonus": 0.08
+    },
+    {
+      "name": "route_vote_rerank_mid",
+      "merge_strategy": "route_vote",
+      "rerank": true,
+      "route_vote_bonus": 0.08,
+      "rerank_overlap_weight": 0.15
+    },
+    {
+      "name": "route_vote_rerank_strong",
+      "merge_strategy": "route_vote",
+      "rerank": true,
+      "route_vote_bonus": 0.12,
+      "rerank_overlap_weight": 0.25
+    }
+  ],
+  "queries": [
+    {
+      "query": "Compare how retrieval planning is described across the corpus.",
+      "expected_terms": ["planner", "retrieval", "route"],
+      "expected_entities": ["Retrieval", "Planner"],
+      "expected_sections": ["Introduction"]
+    },
+    {
+      "query": "Which section explains graph expansion and cross-document context?",
+      "expected_terms": ["graph", "cross", "document"],
+      "expected_references": ["section:bridge"]
+    },
+    {
+      "query": "Summarize differences between hybrid and graph retrieval behavior.",
+      "expected_terms": ["hybrid", "graph", "retrieval"]
+    }
+  ]
+}

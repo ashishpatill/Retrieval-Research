@@ -1,0 +1,126 @@
+{
+  "document_ids": [
+    "01f09764e0df5e94",
+    "0b93434b35aafbde",
+    "19f10ed47b871bf2",
+    "2b1ee7a6f1120b79",
+    "4b8b05f44e7b13e0",
+    "4dbf74919c2d3adb",
+    "5f240666f83bd016",
+    "a0acc73c684d51b4",
+    "db2d082a3d069f51",
+    "ec7f327b5a0780a0"
+  ],
+  "planner_merge_strategy": "score_max",
+  "planner_rerank": false,
+  "planner_route_vote_bonus": 0.08,
+  "planner_rerank_overlap_weight": 0.15,
+  "planner_sweep": [
+    {
+      "name": "score_base",
+      "merge_strategy": "score_max",
+      "rerank": false
+    },
+    {
+      "name": "score_rerank_w010",
+      "merge_strategy": "score_max",
+      "rerank": true,
+      "rerank_overlap_weight": 0.1
+    },
+    {
+      "name": "score_rerank_w020",
+      "merge_strategy": "score_max",
+      "rerank": true,
+      "rerank_overlap_weight": 0.2
+    },
+    {
+      "name": "score_rerank_w030",
+      "merge_strategy": "score_max",
+      "rerank": true,
+      "rerank_overlap_weight": 0.3
+    },
+    {
+      "name": "vote_b004",
+      "merge_strategy": "route_vote",
+      "rerank": false,
+      "route_vote_bonus": 0.04
+    },
+    {
+      "name": "vote_b008",
+      "merge_strategy": "route_vote",
+      "rerank": false,
+      "route_vote_bonus": 0.08
+    },
+    {
+      "name": "vote_b012",
+      "merge_strategy": "route_vote",
+      "rerank": false,
+      "route_vote_bonus": 0.12
+    },
+    {
+      "name": "vote_b008_rerank_w010",
+      "merge_strategy": "route_vote",
+      "rerank": true,
+      "route_vote_bonus": 0.08,
+      "rerank_overlap_weight": 0.1
+    },
+    {
+      "name": "vote_b008_rerank_w020",
+      "merge_strategy": "route_vote",
+      "rerank": true,
+      "route_vote_bonus": 0.08,
+      "rerank_overlap_weight": 0.2
+    },
+    {
+      "name": "vote_b012_rerank_w020",
+      "merge_strategy": "route_vote",
+      "rerank": true,
+      "route_vote_bonus": 0.12,
+      "rerank_overlap_weight": 0.2
+    }
+  ],
+  "queries": [
+    {
+      "query": "How does planner routing choose between hybrid, graph, and visual retrieval?",
+      "expected_terms": [
+        "planner",
+        "routing",
+        "hybrid",
+        "graph"
+      ]
+    },
+    {
+      "query": "What metrics are used for evaluation and planner-vs-static comparison?",
+      "expected_terms": [
+        "mrr",
+        "term_hit_rate",
+        "planner"
+      ]
+    },
+    {
+      "query": "How are ambiguity and follow-up retrieval suggestions represented in knowledge cards?",
+      "expected_terms": [
+        "ambiguity",
+        "follow-up",
+        "knowledge card"
+      ]
+    },
+    {
+      "query": "How does overlap-based reranking affect merged planner evidence?",
+      "expected_terms": [
+        "rerank",
+        "overlap",
+        "merge"
+      ]
+    },
+    {
+      "query": "How does graph expansion use sections, entities, and references across documents?",
+      "expected_terms": [
+        "section",
+        "entity",
+        "reference",
+        "cross-document"
+      ]
+    }
+  ]
+}
