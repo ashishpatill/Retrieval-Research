@@ -17,6 +17,22 @@ Features:
 - Persisted `knowledge_graph.json` artifacts and cross-document graph search over shared entities/references
 - Eval reports with planner-vs-static comparison metrics
 
+## Progress Snapshot (2026-05-01)
+
+- Retrieval foundation is stable across `bm25`, `dense`, `late`, `hybrid`, `visual`, `graph`, and `planner` modes.
+- Graph retrieval now traverses section/entity/reference links and emits diagnostics in retrieval traces.
+- Multi-document graph querying is available through corpus search and eval manifests via `document_ids`.
+- Planner mode routes multi-document graph-intent queries through corpus-level graph traversal.
+- Planner mode supports `score_max` and `route_vote` merge strategies plus optional query-overlap reranking.
+- Eval can sweep planner merge/rerank variants and report best variants by MRR/confidence.
+- Planner route-vote and overlap-rerank weights are tunable, with large-manifest templates under `datasets/manifests/`.
+- Query and eval UI surfaces graph diagnostics, and document pages expose filterable knowledge-graph artifacts.
+- Graph extraction recognizes acronym definitions, quoted concepts, section aliases, numeric ranges, and DOI/arXiv/URL references.
+- Eval reports summarize graph extraction counts and optional expected entity/reference/section recall.
+- A reproducible planner tuning fixture can generate a local sweep manifest under `data/generated/`.
+- Knowledge cards include confidence, answerability reason, unresolved ambiguity notes, and follow-up retrieval suggestions.
+- `knowledge_graph.json` is now persisted per document and exposed via API document detail responses.
+
 ## Quick Start
 
 ```bash
@@ -61,6 +77,13 @@ python3 -m retrieval_research.cli eval datasets/manifests/readme_eval.example.js
 ```
 
 Eval manifests can use either `document_id` or `document_ids` for multi-document graph benchmarks.
+
+To rebuild the local planner tuning fixture and run the current sweep baseline:
+
+```bash
+python3 scripts/build_planner_tuning_fixture.py
+python3 -m retrieval_research.cli eval data/generated/planner_tuning_sweep.local.json --modes bm25 dense late hybrid graph planner --planner-sweep
+```
 
 Retrieval modes now include `bm25`, `dense`, `late`, `hybrid`, `visual`, `graph`, and `planner`. The `late` mode is a dependency-free ColBERT-style MaxSim baseline.
 
