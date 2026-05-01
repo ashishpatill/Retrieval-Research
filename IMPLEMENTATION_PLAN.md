@@ -4,7 +4,7 @@ This plan turns `retrieval_roadmap.md` into an implementation sequence for the p
 
 ## Progress status (session checkpoint)
 
-Last updated: 2026-05-01
+Last updated: 2026-05-01 (post planner tuning fixture sweep)
 
 Current milestone: **v0.3 (in progress)**
 
@@ -31,6 +31,10 @@ Completed:
   - Evidence consolidation with redundancy/conflict annotations in `planner_merge`.
   - Confidence + answerability estimates added to knowledge cards and eval outputs.
   - Planner-vs-static comparison summary added to eval JSON/Markdown output.
+  - Planner merge controls support `score_max` and `route_vote`, plus optional query-overlap reranking.
+  - Eval can benchmark planner merge/rerank variants and report best variants by MRR/confidence.
+  - Planner route-vote and rerank-overlap weights are tunable across CLI, API, eval, and UI.
+  - Added larger manifest templates for planner sweep benchmarking.
 - Phase 6 structured knowledge layer (initial progress):
   - First graph-style retrieval path (`graph`) added with chunk-neighborhood expansion.
   - Planner can route graph-intent queries through graph retrieval.
@@ -40,23 +44,46 @@ Completed:
   - `knowledge_graph.json` artifacts persist extracted sections/entities/references alongside chunks.
   - Corpus graph search supports cross-document traversal over shared entities and references.
   - Eval manifests can target `document_ids` and report aggregate graph diagnostics.
+  - Planner mode can route multi-document corpus queries through corpus-level graph traversal.
+  - Inspector UI can filter graph relations and inspect knowledge graph sections/entities/references.
+  - Graph extraction handles acronym definitions, quoted concepts, section aliases, numeric reference ranges, and DOI/arXiv/URL references.
+  - Eval reports include graph extraction artifact counts and optional expected entity/reference/section recall.
+  - Added a reproducible 10-document planner tuning fixture and local manifest builder.
+  - Fixed section-aware chunk assignment so graph extraction preserves per-heading sections.
+  - Ran the fixture sweep: `score_rerank_soft` led by MRR, while stronger route-vote rerank only increased confidence.
 
 In progress / remaining for near-term roadmap:
 
 - Phase 4 completion:
   - Broaden visual retrieval quality and benchmark on image/table-heavy corpora.
 - Phase 5 completion:
-  - Improve merge strategy controls (e.g., alternative merge policies and rerank toggles).
+  - Finalize planner defaults from fixture + real-corpus sweeps (`score_rerank_soft` for MRR, `route_vote` rerank for confidence).
 - Phase 6 continuation:
-  - Add richer graph inspection and filtering controls in the UI.
-  - Add graph-aware planner routes across multi-document corpus queries.
-  - Improve entity/reference extraction quality beyond regex heuristics.
+  - Evaluate extraction quality on larger document samples and consider optional NLP/LLM extractors.
 
 Next session start point:
 
-1. Add graph-aware planner routes across multi-document corpus queries.
-2. Add UI controls for graph relation filtering and graph artifact inspection.
-3. Improve entity/reference extraction quality beyond regex heuristics.
+1. Decide whether to optimize planner defaults for MRR (`score_rerank_soft`) or confidence (`route_vote` rerank strong).
+2. Update default planner settings after product choice on the target metric.
+3. Evaluate graph extraction quality on larger document samples and consider optional NLP/LLM extractors.
+
+Latest shipped increment (2026-05-01):
+
+- Added section/entity/reference-aware graph links and graph diagnostics on retrieval steps.
+- Added corpus-level graph retrieval for cross-document traversal and eval support for `document_ids`.
+- Persisted and exposed `knowledge_graph.json` with stats in API and UI.
+- Added richer knowledge-card outputs with unresolved ambiguity and follow-up retrieval suggestions.
+- Routed multi-document planner graph paths through corpus-level graph traversal.
+- Added UI relation filters and knowledge graph artifact inspection controls.
+- Improved graph extraction for acronyms, quoted concepts, section aliases, numeric ranges, and external references.
+- Added graph extraction quality metrics to eval JSON/Markdown reports and the eval UI.
+- Added planner merge strategy controls across CLI, API, eval reports, and UI.
+- Added planner sweep benchmarking across merge/rerank variants.
+- Added tunable `route_vote_bonus` and `rerank_overlap_weight` across CLI, API, eval, and UI.
+- Added larger benchmark manifest templates and executed real-corpus sweeps (`data/runs/20260501_235706_416794`, `data/runs/20260501_235750_488089`).
+- Added regression tests for graph artifact generation, corpus graph search, and diagnostics reporting.
+- Added reproducible planner tuning fixture docs and a builder that writes `data/generated/planner_tuning_sweep.local.json`.
+- Fixed chunk section assignment so graph artifacts retain multiple headings on the same page.
 
 ## Current baseline
 
@@ -415,3 +442,4 @@ These remain in the roadmap but are not needed to complete the first implementat
 - Learned MoE chunk router.
 - Learned planner model.
 - Public benchmark release.
+
