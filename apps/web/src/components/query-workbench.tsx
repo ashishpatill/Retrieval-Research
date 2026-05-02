@@ -21,10 +21,13 @@ type ResultPayload = {
 
 type EvidenceItem = {
   chunk_id?: string;
+  retrieval_path?: string;
   score?: number;
   metadata?: {
     graph_relations?: string[];
     graph_expanded_from?: string[];
+    image_path?: string;
+    visual_profile?: string[];
   } & Record<string, unknown>;
 };
 
@@ -139,15 +142,43 @@ function GraphDiagnostics({ payload }: { payload: ResultPayload }) {
   );
 }
 
+function VisualDiagnostics({ payload }: { payload: ResultPayload }) {
+  const visualEvidence = (payload.result.evidence ?? []).filter((item) => item.retrieval_path?.includes("visual"));
+  const visualSteps = (payload.trace.steps ?? []).filter((step) => step.path?.startsWith("visual"));
+  if (!visualEvidence.length && !visualSteps.length) {
+    return null;
+  }
+  return (
+    <section className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900 p-4 lg:col-span-2">
+      <h3 className="text-sm font-semibold text-zinc-100">Visual diagnostics</h3>
+      <p className="text-xs text-zinc-400">
+        Visual steps: {visualSteps.length} | visual evidence: {visualEvidence.length}
+      </p>
+      <div className="space-y-2">
+        {visualEvidence.slice(0, 5).map((item) => (
+          <div key={item.chunk_id} className="rounded-md border border-zinc-800 bg-zinc-950 p-2 text-xs text-zinc-300">
+            <p className="text-zinc-100">
+              {item.chunk_id} ({item.retrieval_path ?? "visual"})
+            </p>
+            <p>Score: {(item.score ?? 0).toFixed(3)}</p>
+            <p>Image: {item.metadata?.image_path ?? "none"}</p>
+            {item.metadata?.visual_profile?.length ? <p>Profile: {item.metadata.visual_profile.join(", ")}</p> : null}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function QueryWorkbench() {
   const [question, setQuestion] = useState("");
   const [documentId, setDocumentId] = useState("");
   const [mode, setMode] = useState("planner");
   const [topK, setTopK] = useState(5);
   const [plannerMergeStrategy, setPlannerMergeStrategy] = useState("score_max");
-  const [plannerRerank, setPlannerRerank] = useState(false);
+  const [plannerRerank, setPlannerRerank] = useState(true);
   const [plannerRouteVoteBonus, setPlannerRouteVoteBonus] = useState(0.08);
-  const [plannerRerankOverlapWeight, setPlannerRerankOverlapWeight] = useState(0.15);
+  const [plannerRerankOverlapWeight, setPlannerRerankOverlapWeight] = useState(0.1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [payload, setPayload] = useState<ResultPayload | null>(null);
@@ -304,6 +335,7 @@ export function QueryWorkbench() {
             </pre>
           </section>
           <GraphDiagnostics payload={payload} />
+          <VisualDiagnostics payload={payload} />
           <section className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900 p-4 lg:col-span-2">
             <h3 className="text-sm font-semibold text-zinc-100">Retrieval trace</h3>
             <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-xs text-zinc-200">
