@@ -5,6 +5,7 @@ from .late import LateInteractionIndex
 from .colpali import DEFAULT_COLPALI_MODEL, ColPaliPageIndex, ColPaliUnavailableError
 from .planner import PLANNER_MERGE_STRATEGIES, QueryPlan, plan_query
 from .service import (
+    DEFAULT_PLANNER_RERANK,
     DEFAULT_RERANK_OVERLAP_WEIGHT,
     DEFAULT_ROUTE_VOTE_BONUS,
     RETRIEVAL_MODES,
@@ -19,6 +20,7 @@ __all__ = [
     "ColPaliPageIndex",
     "ColPaliUnavailableError",
     "DenseIndex",
+    "DEFAULT_PLANNER_RERANK",
     "DEFAULT_RERANK_OVERLAP_WEIGHT",
     "DEFAULT_ROUTE_VOTE_BONUS",
     "GraphIndex",
