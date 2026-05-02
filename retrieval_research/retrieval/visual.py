@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Dict, List, Tuple
+
+from PIL import Image, ImageFilter, ImageStat
 
 from retrieval_research.retrieval.dense import cosine, hashed_embedding
 from retrieval_research.schema import Document, Evidence, Page
@@ -14,6 +17,51 @@ class VisualPageIndex:
         self.dimensions = dimensions
         self.vectors = [hashed_embedding(self._page_text(page), dimensions=dimensions) for page in self.pages]
 
+    def _profile_tokens(self, page: Page) -> list[str]:
+        tokens = ["layout_unknown"]
+        image_path = page.image_path
+        if not image_path or not Path(image_path).exists():
+            return tokens
+        try:
+            with Image.open(image_path).convert("L") as raw:
+                width, height = raw.size
+                stat = ImageStat.Stat(raw)
+                mean = float(stat.mean[0])
+                stddev = float(stat.stddev[0])
+                entropy = float(raw.entropy())
+                edge = raw.filter(ImageFilter.FIND_EDGES)
+                edge_mean = float(ImageStat.Stat(edge).mean[0])
+        except Exception:
+            return tokens
+
+        tokens = ["layout_visual"]
+        if width and height:
+            ratio = width / max(1, height)
+            if ratio > 1.35:
+                tokens.append("orientation_landscape")
+            elif ratio < 0.8:
+                tokens.append("orientation_portrait")
+            else:
+                tokens.append("orientation_square")
+
+        if entropy > 5.4:
+            tokens.append("texture_high")
+        elif entropy < 4.0:
+            tokens.append("texture_low")
+        if stddev > 62:
+            tokens.append("contrast_high")
+        elif stddev < 36:
+            tokens.append("contrast_low")
+        if edge_mean > 28:
+            tokens.append("line_density_high")
+        elif edge_mean < 15:
+            tokens.append("line_density_low")
+        if mean < 95:
+            tokens.append("brightness_low")
+        elif mean > 180:
+            tokens.append("brightness_high")
+        return tokens
+
     def _page_text(self, page: Page) -> str:
         visual_tags = ["page document"]
         if page.image_path:
@@ -21,7 +69,8 @@ class VisualPageIndex:
         source_type = page.metadata.get("source_type") or ""
         if source_type:
             visual_tags.append(str(source_type))
-        return " ".join([self.title, page.text, " ".join(visual_tags)]).strip()
+        profile_tokens = self._profile_tokens(page)
+        return " ".join([self.title, page.text, " ".join(visual_tags), " ".join(profile_tokens)]).strip()
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -90,7 +139,11 @@ class VisualPageIndex:
                     text=text,
                     score=score,
                     retrieval_path="visual",
-                    metadata={"image_path": page.image_path, "page_id": page.id},
+                    metadata={
+                        "image_path": page.image_path,
+                        "page_id": page.id,
+                        "visual_profile": self._profile_tokens(page),
+                    },
                 )
             )
         return evidence
