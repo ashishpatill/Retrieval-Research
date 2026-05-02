@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import MISSING, asdict, dataclass, field, fields
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -80,6 +80,7 @@ class DocumentProfile:
     topics: List[str] = field(default_factory=list)
     entities: List[str] = field(default_factory=list)
     extraction_confidence: Dict[str, Any] = field(default_factory=dict)
+    structured_reference_inventory: Dict[str, List[str]] = field(default_factory=dict)
     created_at: str = field(default_factory=utc_now)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -87,7 +88,30 @@ class DocumentProfile:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "DocumentProfile":
-        return cls(**data)
+        kwargs: Dict[str, Any] = {}
+        for f in fields(cls):
+            if f.name in data:
+                val = data[f.name]
+                if f.name == "structured_reference_inventory":
+                    kwargs[f.name] = {
+                        str(k): list(v) if isinstance(v, (list, tuple)) else []
+                        for k, v in (val or {}).items()
+                    }
+                elif f.name in ("headings", "topics", "entities"):
+                    kwargs[f.name] = list(val) if val is not None else []
+                elif f.name == "page_types":
+                    kwargs[f.name] = dict(val) if val is not None else {}
+                elif f.name == "extraction_confidence":
+                    kwargs[f.name] = dict(val) if val is not None else {}
+                else:
+                    kwargs[f.name] = val
+            elif f.default_factory is not MISSING:
+                kwargs[f.name] = f.default_factory()
+            elif f.default is not MISSING:
+                kwargs[f.name] = f.default
+            else:
+                raise KeyError(f"Missing required field {f.name!r} in document profile payload")
+        return cls(**kwargs)
 
 
 @dataclass
