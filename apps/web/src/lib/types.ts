@@ -11,6 +11,7 @@ export type DocumentProfile = {
   topics: string[];
   entities: string[];
   extraction_confidence: Record<string, unknown>;
+  structured_reference_inventory?: Record<string, string[]>;
   created_at: string;
 };
 
