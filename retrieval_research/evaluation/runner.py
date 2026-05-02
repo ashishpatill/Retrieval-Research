@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from retrieval_research.evidence import build_knowledge_card
 from retrieval_research.retrieval import (
+    DEFAULT_PLANNER_RERANK,
     DEFAULT_RERANK_OVERLAP_WEIGHT,
     DEFAULT_ROUTE_VOTE_BONUS,
     PLANNER_MERGE_STRATEGIES,
@@ -131,11 +132,100 @@ def _graph_diagnostics_summary(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def _visual_diagnostics_summary(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    visual_steps = [
+        step
+        for item in results
+        for step in item.get("steps", [])
+        if str(step.get("path", "")).startswith("visual")
+    ]
+    visual_hits = [
+        hit
+        for item in results
+        for hit in item.get("hits", [])
+        if str(hit.get("retrieval_path", "")).startswith("visual")
+    ]
+    planner_rows = [item for item in results if item.get("mode") == "planner"]
+    planner_visual_rows = []
+    for item in planner_rows:
+        contributed = any(
+            "visual" in source_path
+            for hit in item.get("hits", [])
+            for source_path in hit.get("metadata", {}).get("source_paths", [])
+        )
+        if contributed:
+            planner_visual_rows.append(item)
+
+    if not visual_steps and not visual_hits and not planner_rows:
+        return {"available": False, "reason": "visual retrieval was not run"}
+
+    planner_total = len(planner_rows)
+    planner_visual_total = len(planner_visual_rows)
+    return {
+        "available": True,
+        "visual_step_count": len(visual_steps),
+        "visual_hit_count": len(visual_hits),
+        "planner_query_count": planner_total,
+        "planner_visual_contribution_count": planner_visual_total,
+        "planner_visual_contribution_rate": (planner_visual_total / planner_total) if planner_total else 0.0,
+    }
+
+
 def _expected_values(manifest: Dict[str, Any], cases: List[Dict[str, Any]], key: str) -> List[str]:
     values = list(manifest.get(key, []))
     for case in cases:
         values.extend(case.get(key, []))
     return sorted({str(value) for value in values})
+
+
+def _expected_values_by_tier(manifest: Dict[str, Any], cases: List[Dict[str, Any]], key: str) -> Dict[str, List[str]]:
+    values: Dict[str, List[str]] = {}
+    tier_key = f"{key}_by_tier"
+
+    def _merge(payload: Any) -> None:
+        if not isinstance(payload, dict):
+            return
+        for tier, tier_values in payload.items():
+            if not isinstance(tier_values, list):
+                continue
+            bucket = values.setdefault(str(tier), [])
+            bucket.extend(str(value) for value in tier_values)
+
+    _merge(manifest.get(tier_key))
+    for case in cases:
+        _merge(case.get(tier_key))
+    return {tier: sorted(set(items)) for tier, items in values.items()}
+
+
+def _document_quality_tiers(
+    store: ArtifactStore,
+    manifest: Dict[str, Any],
+    cases: List[Dict[str, Any]],
+    document_ids: set[str],
+) -> Dict[str, str]:
+    tiers: Dict[str, str] = {}
+
+    for doc_id, tier in (manifest.get("document_quality_tiers") or {}).items():
+        tiers[str(doc_id)] = str(tier)
+    for case in cases:
+        for doc_id, tier in (case.get("document_quality_tiers") or {}).items():
+            tiers[str(doc_id)] = str(tier)
+
+    for document_id in document_ids:
+        if document_id in tiers:
+            continue
+        try:
+            document = store.load_document(document_id)
+            metadata = document.metadata or {}
+            tier = metadata.get("source_quality_tier") or metadata.get("quality_tier") or metadata.get("ocr_quality_tier")
+            if tier:
+                tiers[document_id] = str(tier)
+        except FileNotFoundError:
+            continue
+
+    for document_id in document_ids:
+        tiers.setdefault(document_id, "unlabeled")
+    return tiers
 
 
 def _graph_extraction_summary(
@@ -170,6 +260,13 @@ def _graph_extraction_summary(
     reference_names = set()
     section_names = set()
     documents = []
+    quality_tiers = _document_quality_tiers(store, manifest, cases, document_ids)
+    tier_totals: Dict[str, Dict[str, int]] = {}
+    tier_relations: Dict[str, Dict[str, int]] = {}
+    tier_entities: Dict[str, set[str]] = {}
+    tier_references: Dict[str, set[str]] = {}
+    tier_sections: Dict[str, set[str]] = {}
+    tier_documents: Dict[str, List[str]] = {}
     totals = {
         "node_count": 0,
         "edge_count": 0,
@@ -179,18 +276,46 @@ def _graph_extraction_summary(
     }
     for document_id, graph in graphs:
         stats = graph.get("stats", {})
+        tier = quality_tiers.get(document_id, "unlabeled")
+        tier_totals.setdefault(
+            tier,
+            {
+                "node_count": 0,
+                "edge_count": 0,
+                "section_count": 0,
+                "entity_count": 0,
+                "reference_count": 0,
+            },
+        )
+        tier_relations.setdefault(tier, {})
+        tier_entities.setdefault(tier, set())
+        tier_references.setdefault(tier, set())
+        tier_sections.setdefault(tier, set())
+        tier_documents.setdefault(tier, []).append(document_id)
+
+        per_doc_stats = {key: int(stats.get(key, 0)) for key in totals}
         for key in totals:
-            totals[key] += int(stats.get(key, 0))
+            totals[key] += per_doc_stats[key]
+            tier_totals[tier][key] += per_doc_stats[key]
         for relation, count in stats.get("relation_counts", {}).items():
             relation_counts[relation] = relation_counts.get(relation, 0) + int(count)
+            tier_relations[tier][relation] = tier_relations[tier].get(relation, 0) + int(count)
         entity_names.update(str(item.get("name", "")).lower() for item in graph.get("entities", []) if item.get("name"))
         reference_names.update(str(item.get("reference", "")).lower() for item in graph.get("references", []) if item.get("reference"))
         section_names.update(str(item.get("name", "")).lower() for item in graph.get("sections", []) if item.get("name"))
-        documents.append({"document_id": document_id, **{key: int(stats.get(key, 0)) for key in totals}})
+        tier_entities[tier].update(str(item.get("name", "")).lower() for item in graph.get("entities", []) if item.get("name"))
+        tier_references[tier].update(
+            str(item.get("reference", "")).lower() for item in graph.get("references", []) if item.get("reference")
+        )
+        tier_sections[tier].update(str(item.get("name", "")).lower() for item in graph.get("sections", []) if item.get("name"))
+        documents.append({"document_id": document_id, "quality_tier": tier, **per_doc_stats})
 
     expected_entities = _expected_values(manifest, cases, "expected_entities")
     expected_references = _expected_values(manifest, cases, "expected_references")
     expected_sections = _expected_values(manifest, cases, "expected_sections")
+    expected_entities_by_tier = _expected_values_by_tier(manifest, cases, "expected_entities")
+    expected_references_by_tier = _expected_values_by_tier(manifest, cases, "expected_references")
+    expected_sections_by_tier = _expected_values_by_tier(manifest, cases, "expected_sections")
 
     def _recall(expected: List[str], observed: set[str]) -> Dict[str, Any]:
         if not expected:
@@ -205,6 +330,25 @@ def _graph_extraction_summary(
         }
 
     document_count = len(graphs)
+    quality_tier_summary = []
+    for tier in sorted(tier_totals):
+        tier_doc_count = max(1, len(tier_documents.get(tier, [])))
+        quality_tier_summary.append(
+            {
+                "quality_tier": tier,
+                "document_count": len(tier_documents.get(tier, [])),
+                "document_ids": sorted(tier_documents.get(tier, [])),
+                "totals": tier_totals[tier],
+                "averages": {key: tier_totals[tier][key] / tier_doc_count for key in tier_totals[tier]},
+                "relation_counts": dict(sorted(tier_relations.get(tier, {}).items())),
+                "expected_recall": {
+                    "entities": _recall(expected_entities_by_tier.get(tier, []), tier_entities.get(tier, set())),
+                    "references": _recall(expected_references_by_tier.get(tier, []), tier_references.get(tier, set())),
+                    "sections": _recall(expected_sections_by_tier.get(tier, []), tier_sections.get(tier, set())),
+                },
+            }
+        )
+
     return {
         "available": True,
         "document_count": document_count,
@@ -217,6 +361,7 @@ def _graph_extraction_summary(
             "references": _recall(expected_references, reference_names),
             "sections": _recall(expected_sections, section_names),
         },
+        "quality_tiers": quality_tier_summary,
         "documents": documents,
     }
 
@@ -372,7 +517,7 @@ def run_eval(
     top_k: int = 5,
     modes: Optional[List[str]] = None,
     planner_merge_strategy: str = "score_max",
-    planner_rerank: bool = False,
+    planner_rerank: bool = DEFAULT_PLANNER_RERANK,
     planner_route_vote_bonus: float = DEFAULT_ROUTE_VOTE_BONUS,
     planner_rerank_overlap_weight: float = DEFAULT_RERANK_OVERLAP_WEIGHT,
     planner_sweep: Any = False,
@@ -498,6 +643,7 @@ def run_eval(
             "query_count": len(results),
             "modes": metrics_by_mode,
             "planner_vs_static": _planner_static_comparison(metrics_by_mode),
+            "visual_diagnostics": _visual_diagnostics_summary(results),
             "graph_diagnostics": _graph_diagnostics_summary(results),
             "graph_extraction": _graph_extraction_summary(store, manifest, cases),
             "planner_sweep": _planner_sweep_summary(store, manifest, cases, top_k, planner_sweep_variants),
@@ -514,7 +660,7 @@ def report_to_markdown(report: Dict[str, Any]) -> str:
         "",
         f"- Result rows: {metrics['query_count']}",
         f"- Planner merge strategy: {report.get('planner', {}).get('merge_strategy', 'score_max')}",
-        f"- Planner rerank: {report.get('planner', {}).get('rerank', False)}",
+        f"- Planner rerank: {report.get('planner', {}).get('rerank', DEFAULT_PLANNER_RERANK)}",
         f"- Planner route vote bonus: {report.get('planner', {}).get('route_vote_bonus', DEFAULT_ROUTE_VOTE_BONUS):.3f}",
         f"- Planner rerank overlap weight: {report.get('planner', {}).get('rerank_overlap_weight', DEFAULT_RERANK_OVERLAP_WEIGHT):.3f}",
         "",
@@ -579,6 +725,23 @@ def report_to_markdown(report: Dict[str, Any]) -> str:
                 f"{variant_metrics['term_hit_rate']:.3f} | {variant_metrics['page_hit_rate']:.3f} |"
             )
 
+    visual_diagnostics = metrics.get("visual_diagnostics", {"available": False})
+    lines.extend([
+        "",
+        "## Visual Diagnostics",
+        "",
+    ])
+    if not visual_diagnostics.get("available"):
+        lines.append(f"- Not available: {visual_diagnostics.get('reason', 'visual diagnostics unavailable')}")
+    else:
+        lines.append(f"- Visual steps: {visual_diagnostics['visual_step_count']}")
+        lines.append(f"- Visual hits: {visual_diagnostics['visual_hit_count']}")
+        lines.append(f"- Planner queries: {visual_diagnostics['planner_query_count']}")
+        lines.append(
+            f"- Planner rows with visual contribution: {visual_diagnostics['planner_visual_contribution_count']} "
+            f"({visual_diagnostics['planner_visual_contribution_rate']:.3f})"
+        )
+
     graph_diagnostics = metrics.get("graph_diagnostics", {"available": False})
     lines.extend([
         "",
@@ -619,6 +782,17 @@ def report_to_markdown(report: Dict[str, Any]) -> str:
                     f"- Expected {label} recall: {recall['hit_count']}/{recall['expected_count']} "
                     f"({recall['recall']:.3f})"
                 )
+        for tier in graph_extraction.get("quality_tiers", []):
+            lines.append(
+                f"- Tier `{tier['quality_tier']}`: docs={tier['document_count']}, "
+                f"entities={tier['totals']['entity_count']}, references={tier['totals']['reference_count']}"
+            )
+            for label, recall in tier.get("expected_recall", {}).items():
+                if recall.get("available"):
+                    lines.append(
+                        f"  - Expected {label} recall: {recall['hit_count']}/{recall['expected_count']} "
+                        f"({recall['recall']:.3f})"
+                    )
         if graph_extraction.get("missing_document_ids"):
             lines.append(f"- Missing graph artifacts: {', '.join(graph_extraction['missing_document_ids'])}")
 
