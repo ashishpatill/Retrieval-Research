@@ -1,20 +1,20 @@
 {
   "document_ids": [
     "01f09764e0df5e94",
-    "0b93434b35aafbde",
     "19f10ed47b871bf2",
-    "2b1ee7a6f1120b79",
+    "44379195ccf0ed9e",
     "4b8b05f44e7b13e0",
     "4dbf74919c2d3adb",
     "5f240666f83bd016",
     "a0acc73c684d51b4",
     "db2d082a3d069f51",
+    "e2b475707b33fc7f",
     "ec7f327b5a0780a0"
   ],
   "planner_merge_strategy": "score_max",
-  "planner_rerank": false,
+  "planner_rerank": true,
   "planner_route_vote_bonus": 0.08,
-  "planner_rerank_overlap_weight": 0.15,
+  "planner_rerank_overlap_weight": 0.1,
   "planner_sweep": true,
   "queries": [
     {
