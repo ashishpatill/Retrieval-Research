@@ -17,18 +17,27 @@ Features:
 - Persisted `knowledge_graph.json` artifacts and cross-document graph search over shared entities/references
 - Eval reports with planner-vs-static comparison metrics
 
-## Progress Snapshot (2026-05-01)
+## Progress Snapshot (2026-05-03)
 
+- Phase 6 structured knowledge layer is complete for the planned v0.3 scope.
 - Retrieval foundation is stable across `bm25`, `dense`, `late`, `hybrid`, `visual`, `graph`, and `planner` modes.
 - Graph retrieval now traverses section/entity/reference links and emits diagnostics in retrieval traces.
 - Multi-document graph querying is available through corpus search and eval manifests via `document_ids`.
-- Planner mode routes multi-document graph-intent queries through corpus-level graph traversal.
+- Planner mode is now the default query path across CLI/API/core retrieval, and routes multi-document graph-intent queries through corpus-level graph traversal.
 - Planner mode supports `score_max` and `route_vote` merge strategies plus optional query-overlap reranking.
 - Eval can sweep planner merge/rerank variants and report best variants by MRR/confidence.
+- Planner defaults now favor the MRR-leading sweep variant: `score_max` merge with soft query-overlap reranking.
+- Latest 10-document fixture validation: planner MRR `0.736`, term hit `1.000`, citation support `1.000`, answerable `1.000`.
+- Latest sweep winner remains `score_rerank_soft` by MRR, with `route_vote_rerank_strong` retained as a confidence-oriented experiment.
 - Planner route-vote and overlap-rerank weights are tunable, with large-manifest templates under `datasets/manifests/`.
+- A reproducible weak-OCR visual fixture now validates visual retrieval quality and planner visual contribution diagnostics (`scripts/build_visual_phase4_fixture.py`).
 - Query and eval UI surfaces graph diagnostics, and document pages expose filterable knowledge-graph artifacts.
+- Query and eval UI now surface visual diagnostics (visual steps/hits and planner visual contribution rate).
 - Graph extraction recognizes acronym definitions, quoted concepts, section aliases, numeric ranges, and DOI/arXiv/URL references.
+- Graph extraction now normalizes common OCR reference noise (for example `Sectlon`, `F1gure`, `Tab1e`, `arX1v`, `Tabie`, `arxlv`) before reference parsing.
 - Eval reports summarize graph extraction counts and optional expected entity/reference/section recall.
+- Eval graph extraction summary now supports quality-tier drift reporting via `document_quality_tiers` and `expected_*_by_tier`.
+- Fixture graph extraction recall is currently `1.000` for expected entities, references, and sections across 10 generated documents.
 - A reproducible planner tuning fixture can generate a local sweep manifest under `data/generated/`.
 - Knowledge cards include confidence, answerability reason, unresolved ambiguity notes, and follow-up retrieval suggestions.
 - `knowledge_graph.json` is now persisted per document and exposed via API document detail responses.
@@ -77,12 +86,20 @@ python3 -m retrieval_research.cli eval datasets/manifests/readme_eval.example.js
 ```
 
 Eval manifests can use either `document_id` or `document_ids` for multi-document graph benchmarks.
+For graph extraction drift analysis, manifests can also define `document_quality_tiers` and optional `expected_entities_by_tier`, `expected_references_by_tier`, and `expected_sections_by_tier`.
 
 To rebuild the local planner tuning fixture and run the current sweep baseline:
 
 ```bash
 python3 scripts/build_planner_tuning_fixture.py
 python3 -m retrieval_research.cli eval data/generated/planner_tuning_sweep.local.json --modes bm25 dense late hybrid graph planner --planner-sweep
+```
+
+To build and validate the weak-OCR visual Phase 4 fixture:
+
+```bash
+python3 scripts/build_visual_phase4_fixture.py
+python3 -m retrieval_research.cli eval data/generated/phase4_visual_eval.local.json --modes visual planner
 ```
 
 Retrieval modes now include `bm25`, `dense`, `late`, `hybrid`, `visual`, `graph`, and `planner`. The `late` mode is a dependency-free ColBERT-style MaxSim baseline.
