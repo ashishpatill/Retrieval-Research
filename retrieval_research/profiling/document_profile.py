@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from typing import Iterable, List
+from typing import Dict, Iterable, List
 
+from retrieval_research.retrieval.graph import _references
 from retrieval_research.schema import Document, DocumentProfile
 
 
@@ -73,6 +74,16 @@ def _topics(text: str, limit: int = 12) -> List[str]:
     return [word for word, _count in counts.most_common(limit)]
 
 
+def _structured_reference_inventory(full_text: str) -> Dict[str, List[str]]:
+    buckets: Dict[str, List[str]] = {}
+    for ref in _references(full_text):
+        kind, _, _rest = ref.partition(":")
+        if not kind:
+            continue
+        buckets.setdefault(kind, []).append(ref)
+    return {kind: sorted(set(items)) for kind, items in buckets.items()}
+
+
 def build_document_profile(document: Document) -> DocumentProfile:
     page_types = Counter()
     text_pages = 0
@@ -123,4 +134,5 @@ def build_document_profile(document: Document) -> DocumentProfile:
         topics=_topics(full_text),
         entities=_entities(full_text),
         extraction_confidence=extraction_confidence,
+        structured_reference_inventory=_structured_reference_inventory(full_text),
     )
