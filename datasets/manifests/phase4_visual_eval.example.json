@@ -1,0 +1,20 @@
+{
+  "document_ids": [
+    "replace-with-table-doc-id",
+    "replace-with-diagram-doc-id"
+  ],
+  "queries": [
+    {
+      "query": "Which page looks like a table with rows and columns?",
+      "document_id": "replace-with-table-doc-id",
+      "expected_pages": [1],
+      "expected_terms": []
+    },
+    {
+      "query": "Find the page with a flow diagram and connecting arrow.",
+      "document_id": "replace-with-diagram-doc-id",
+      "expected_pages": [1],
+      "expected_terms": []
+    }
+  ]
+}
