@@ -42,6 +42,7 @@ class QueryPlan:
     query_type: str
     routes: List[str]
     reason: str
+    route_explanation: str
     route_settings: Dict[str, dict]
     merge_strategy: str = "score_max"
 
@@ -50,6 +51,7 @@ class QueryPlan:
             "query_type": self.query_type,
             "routes": self.routes,
             "reason": self.reason,
+            "route_explanation": self.route_explanation,
             "route_settings": self.route_settings,
             "merge_strategy": self.merge_strategy,
         }
@@ -75,6 +77,18 @@ def _settings_for(query_type: str, routes: List[str]) -> Dict[str, dict]:
     return settings
 
 
+def _looks_like_identifier_query(query: str, terms: set[str]) -> bool:
+    if re.search(r"\b[A-Z]{2,}[-_ ]?\d{2,}\b", query):
+        return True
+    identifier_hints = {"id", "invoice", "section", "figure", "table", "eq", "equation", "code", "ticket"}
+    if not (terms & identifier_hints):
+        return False
+    for term in terms:
+        if len(term) >= 4 and any(ch.isalpha() for ch in term) and any(ch.isdigit() for ch in term):
+            return True
+    return bool(re.search(r"\b\d{3,}\b", query))
+
+
 def plan_query(query: str, merge_strategy: str = "score_max") -> QueryPlan:
     if merge_strategy not in PLANNER_MERGE_STRATEGIES:
         raise ValueError(f"Unsupported planner merge strategy: {merge_strategy}")
@@ -87,6 +101,7 @@ def plan_query(query: str, merge_strategy: str = "score_max") -> QueryPlan:
             query_type="visual",
             routes=routes,
             reason="visual/layout terms detected",
+            route_explanation="Detected visual/layout terms, prioritizing visual retrieval with hybrid fallback.",
             route_settings=_settings_for("visual", routes),
             merge_strategy=merge_strategy,
         )
@@ -96,6 +111,7 @@ def plan_query(query: str, merge_strategy: str = "score_max") -> QueryPlan:
             query_type="table_or_form",
             routes=routes,
             reason="table/form terms detected",
+            route_explanation="Detected table/form terms, favoring lexical and late-interaction retrieval.",
             route_settings=_settings_for("table_or_form", routes),
             merge_strategy=merge_strategy,
         )
@@ -105,15 +121,17 @@ def plan_query(query: str, merge_strategy: str = "score_max") -> QueryPlan:
             query_type="multi_hop" if terms & MULTIHOP_TERMS else "graph_expansion",
             routes=routes,
             reason="synthesis, graph, or neighborhood terms detected",
+            route_explanation="Detected synthesis/graph intent, enabling graph-aware multi-route retrieval.",
             route_settings=_settings_for("multi_hop", routes),
             merge_strategy=merge_strategy,
         )
-    if re.search(r"\b[A-Z]{2,}[-_ ]?\d+\b", query) or re.search(r"\d", query):
+    if _looks_like_identifier_query(query, terms):
         routes = ["bm25", "late", "hybrid"]
         return QueryPlan(
             query_type="exact_lookup",
             routes=routes,
-            reason="identifier or numeric lookup detected",
+            reason="identifier-style lookup detected",
+            route_explanation="Detected identifier-style query patterns, prioritizing exact lexical matching.",
             route_settings=_settings_for("exact_lookup", routes),
             merge_strategy=merge_strategy,
         )
@@ -122,6 +140,7 @@ def plan_query(query: str, merge_strategy: str = "score_max") -> QueryPlan:
         query_type="semantic",
         routes=routes,
         reason="default semantic retrieval route",
+        route_explanation="No special routing signals detected, using semantic hybrid retrieval.",
         route_settings=_settings_for("semantic", routes),
         merge_strategy=merge_strategy,
     )
