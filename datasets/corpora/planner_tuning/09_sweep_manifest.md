@@ -7,3 +7,5 @@ The default manifest should include cross-document synthesis, graph reference lo
 ## Sweep Variants
 
 score_base uses score_max without rerank. score_rerank_soft enables overlap rerank with a small weight. route_vote_mid applies route_vote. route_vote_rerank_mid and route_vote_rerank_strong combine voting with reranking.
+
+The current product default follows score_rerank_soft: score_max merge with query-overlap reranking at weight 0.10. Route-vote variants remain useful for checking whether confidence improves without masking weak evidence.
