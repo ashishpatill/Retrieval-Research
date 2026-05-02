@@ -40,6 +40,34 @@ ENTITY_STOPWORDS = {
 }
 
 
+OCR_REFERENCE_NORMALIZATIONS = (
+    (r"\bsectlon\b", "section"),
+    (r"\bsectlon[s]?\b", "section"),
+    (r"\bsec(?:tlon|tion)\b", "section"),
+    (r"\bchapler\b", "chapter"),
+    (r"\bappendlx\b", "appendix"),
+    (r"\bfig(?:ure)?\b", "figure"),
+    (r"\bf1g(?:ure)?\b", "figure"),
+    (r"\bflg(?:ure)?\b", "figure"),
+    (r"\bf1g\b", "figure"),
+    (r"\bfi(?:g|q)ure\b", "figure"),
+    (r"\btab1e\b", "table"),
+    (r"\btabie\b", "table"),
+    (r"\btab1es\b", "tables"),
+    (r"\bequat1on\b", "equation"),
+    (r"\bequatlons?\b", "equation"),
+    (r"\barx1v\b", "arXiv"),
+    (r"\barxlv\b", "arXiv"),
+)
+
+
+def _normalize_ocr_reference_text(text: str) -> str:
+    normalized = text
+    for pattern, replacement in OCR_REFERENCE_NORMALIZATIONS:
+        normalized = re.sub(pattern, replacement, normalized, flags=re.IGNORECASE)
+    return normalized
+
+
 def _tokens(text: str) -> set[str]:
     return set(TOKEN_RE.findall(text.lower()))
 
@@ -97,6 +125,7 @@ def _section_aliases(section: str | None) -> set[str]:
 
 
 def _references(text: str) -> set[str]:
+    text = _normalize_ocr_reference_text(text)
     refs = set()
     for kind, numbers in NUMBERED_REF_RE.findall(text):
         normalized_kind = "figure" if kind.lower() == "fig." else kind.lower()
@@ -122,6 +151,22 @@ def _section_key(section: str | None) -> str | None:
     if not section:
         return None
     return re.sub(r"\s+", " ", section.strip(" \t\n\r.,;:()[]{}")).lower()
+
+
+NUMERIC_SECTION_PREFIX_RE = re.compile(r"^\s*(\d+(?:\.\d+)*)\b")
+
+
+def _numeric_section_prefix(section: str | None) -> str | None:
+    if not section:
+        return None
+    match = NUMERIC_SECTION_PREFIX_RE.match(section.strip())
+    return match.group(1) if match else None
+
+
+def _parent_numeric_section_prefix(prefix: str) -> str | None:
+    if "." not in prefix:
+        return None
+    return prefix.rsplit(".", 1)[0]
 
 
 def _add_edge(edges: dict[str, list[dict]], source: str, target: str, relation: str, weight: float, **metadata: object) -> None:
@@ -186,6 +231,77 @@ class GraphIndex:
             for chunk_id in ids:
                 for other_id in ids:
                     _add_edge(edges, chunk_id, other_id, "same_section", 0.55, section=section)
+
+        last_sec_chunk: tuple[Chunk, str] | None = None
+        for chunk in ordered:
+            sec = _section_key(chunk.parent_section)
+            if sec and last_sec_chunk:
+                prev_chunk, prev_sec = last_sec_chunk
+                if prev_sec != sec:
+                    _add_edge(
+                        edges,
+                        prev_chunk.id,
+                        chunk.id,
+                        "next_section",
+                        0.52,
+                        section_from=prev_sec,
+                        section_to=sec,
+                    )
+                    _add_edge(
+                        edges,
+                        chunk.id,
+                        prev_chunk.id,
+                        "previous_section",
+                        0.48,
+                        section_from=sec,
+                        section_to=prev_sec,
+                    )
+            if sec:
+                last_sec_chunk = (chunk, sec)
+
+        section_first: dict[str, Chunk] = {}
+        for chunk in ordered:
+            sk = _section_key(chunk.parent_section)
+            if sk and sk not in section_first:
+                section_first[sk] = chunk
+
+        prefix_to_section: dict[str, str] = {}
+        for sk, ch in section_first.items():
+            pref = _numeric_section_prefix(ch.parent_section)
+            if pref:
+                prefix_to_section[pref] = sk
+
+        for sk, ch in section_first.items():
+            pref = _numeric_section_prefix(ch.parent_section)
+            if not pref:
+                continue
+            parent_pref = _parent_numeric_section_prefix(pref)
+            if not parent_pref:
+                continue
+            parent_sk = prefix_to_section.get(parent_pref)
+            if not parent_sk or parent_sk == sk:
+                continue
+            parent_chunk = section_first.get(parent_sk)
+            if not parent_chunk:
+                continue
+            _add_edge(
+                edges,
+                parent_chunk.id,
+                ch.id,
+                "child_section",
+                0.56,
+                parent_section=parent_sk,
+                child_section=sk,
+            )
+            _add_edge(
+                edges,
+                ch.id,
+                parent_chunk.id,
+                "parent_section",
+                0.56,
+                parent_section=parent_sk,
+                child_section=sk,
+            )
 
         for entity, entity_chunks in by_entity.items():
             ids = [chunk.id for chunk in entity_chunks]
