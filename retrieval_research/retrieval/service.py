@@ -17,7 +17,8 @@ from retrieval_research.storage import ArtifactStore
 
 RETRIEVAL_MODES = ("bm25", "dense", "late", "hybrid", "visual", "graph", "planner")
 DEFAULT_ROUTE_VOTE_BONUS = 0.08
-DEFAULT_RERANK_OVERLAP_WEIGHT = 0.15
+DEFAULT_PLANNER_RERANK = True
+DEFAULT_RERANK_OVERLAP_WEIGHT = 0.10
 
 TOKEN_RE = re.compile(r"[a-z0-9_]+")
 
@@ -65,7 +66,7 @@ def _consolidate_planner_hits(
     planner_reason: str,
     query: str = "",
     merge_strategy: str = "score_max",
-    rerank: bool = False,
+    rerank: bool = DEFAULT_PLANNER_RERANK,
     route_vote_bonus: float = DEFAULT_ROUTE_VOTE_BONUS,
     rerank_overlap_weight: float = DEFAULT_RERANK_OVERLAP_WEIGHT,
 ) -> tuple[List[Evidence], dict]:
@@ -249,7 +250,7 @@ def _search_corpus_planner(
     query: str,
     top_k: int,
     planner_merge_strategy: str = "score_max",
-    planner_rerank: bool = False,
+    planner_rerank: bool = DEFAULT_PLANNER_RERANK,
     planner_route_vote_bonus: float = DEFAULT_ROUTE_VOTE_BONUS,
     planner_rerank_overlap_weight: float = DEFAULT_RERANK_OVERLAP_WEIGHT,
 ) -> Tuple[List[Evidence], List[dict]]:
@@ -327,10 +328,10 @@ def search_document(
     store: ArtifactStore,
     document_id: str,
     query: str,
-    mode: str = "hybrid",
+    mode: str = "planner",
     top_k: int = 5,
     planner_merge_strategy: str = "score_max",
-    planner_rerank: bool = False,
+    planner_rerank: bool = DEFAULT_PLANNER_RERANK,
     planner_route_vote_bonus: float = DEFAULT_ROUTE_VOTE_BONUS,
     planner_rerank_overlap_weight: float = DEFAULT_RERANK_OVERLAP_WEIGHT,
 ) -> Tuple[List[Evidence], List[dict]]:
@@ -454,10 +455,10 @@ def search_corpus(
     store: ArtifactStore,
     document_ids: List[str],
     query: str,
-    mode: str = "hybrid",
+    mode: str = "planner",
     top_k: int = 5,
     planner_merge_strategy: str = "score_max",
-    planner_rerank: bool = False,
+    planner_rerank: bool = DEFAULT_PLANNER_RERANK,
     planner_route_vote_bonus: float = DEFAULT_ROUTE_VOTE_BONUS,
     planner_rerank_overlap_weight: float = DEFAULT_RERANK_OVERLAP_WEIGHT,
 ) -> Tuple[List[Evidence], List[dict]]:
