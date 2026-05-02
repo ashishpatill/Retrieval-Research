@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { DocumentProfilePanel } from "@/components/document-profile-panel";
 import { DocumentActions } from "@/components/document-actions";
 import { KnowledgeGraphInspector } from "@/components/knowledge-graph-inspector";
 import { getDocument } from "@/lib/api";
@@ -18,6 +19,7 @@ export default async function DocumentDetailPage({ params }: Props) {
 
   const document = payload.document;
   const profile = payload.profile;
+
   return (
     <div className="space-y-6">
       <section className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
@@ -52,12 +54,7 @@ export default async function DocumentDetailPage({ params }: Props) {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <DocumentActions documentId={document.id} />
-        <section className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900 p-4 lg:col-span-2">
-          <h2 className="text-sm font-semibold text-zinc-100">Document profile</h2>
-          <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-xs text-zinc-200">
-            {JSON.stringify(profile ?? {}, null, 2)}
-          </pre>
-        </section>
+        <DocumentProfilePanel profile={profile} />
       </div>
 
       <section className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
