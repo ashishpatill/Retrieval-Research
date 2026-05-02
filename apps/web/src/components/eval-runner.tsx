@@ -40,6 +40,14 @@ type EvalResponse = {
         max_document_count?: number;
         relation_counts?: Record<string, number>;
       };
+      visual_diagnostics?: {
+        available?: boolean;
+        visual_step_count?: number;
+        visual_hit_count?: number;
+        planner_query_count?: number;
+        planner_visual_contribution_count?: number;
+        planner_visual_contribution_rate?: number;
+      };
       graph_extraction?: {
         available?: boolean;
         document_count?: number;
@@ -82,11 +90,11 @@ const DEFAULT_MANIFEST = {
 export function EvalRunner() {
   const [manifestText, setManifestText] = useState(JSON.stringify(DEFAULT_MANIFEST, null, 2));
   const [topK, setTopK] = useState(5);
-  const [modesText, setModesText] = useState("bm25,dense,hybrid,planner");
+  const [modesText, setModesText] = useState("bm25,dense,late,hybrid,visual,graph,planner");
   const [plannerMergeStrategy, setPlannerMergeStrategy] = useState("score_max");
-  const [plannerRerank, setPlannerRerank] = useState(false);
+  const [plannerRerank, setPlannerRerank] = useState(true);
   const [plannerRouteVoteBonus, setPlannerRouteVoteBonus] = useState(0.08);
-  const [plannerRerankOverlapWeight, setPlannerRerankOverlapWeight] = useState(0.15);
+  const [plannerRerankOverlapWeight, setPlannerRerankOverlapWeight] = useState(0.1);
   const [plannerSweep, setPlannerSweep] = useState(false);
   const [result, setResult] = useState<EvalResponse | null>(null);
   const [error, setError] = useState("");
@@ -140,6 +148,7 @@ export function EvalRunner() {
       )
       .slice(0, 8) ?? [];
   const graphSummary = result?.report.metrics?.graph_diagnostics;
+  const visualSummary = result?.report.metrics?.visual_diagnostics;
   const extractionSummary = result?.report.metrics?.graph_extraction;
   const plannerSweepSummary = result?.report.metrics?.planner_sweep;
 
@@ -165,7 +174,7 @@ export function EvalRunner() {
             value={modesText}
             onChange={(event) => setModesText(event.target.value)}
             className="rounded-md border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-100"
-            placeholder="bm25,dense,hybrid,planner"
+            placeholder="bm25,dense,late,hybrid,visual,graph,planner"
           />
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -231,11 +240,11 @@ export function EvalRunner() {
           <p className="text-xs text-zinc-400">Run ID: {result.run_id}</p>
           <p className="text-xs text-zinc-400">
             Planner merge: {result.report.planner?.merge_strategy ?? "score_max"} | rerank:{" "}
-            {String(result.report.planner?.rerank ?? false)}
+            {String(result.report.planner?.rerank ?? true)}
           </p>
           <p className="text-xs text-zinc-400">
             Vote bonus: {(result.report.planner?.route_vote_bonus ?? 0.08).toFixed(2)} | Overlap weight:{" "}
-            {(result.report.planner?.rerank_overlap_weight ?? 0.15).toFixed(2)}
+            {(result.report.planner?.rerank_overlap_weight ?? 0.1).toFixed(2)}
           </p>
           {graphSummary?.available ? (
             <div className="grid gap-2 text-xs text-zinc-300 sm:grid-cols-4">
@@ -257,6 +266,29 @@ export function EvalRunner() {
               </div>
             </div>
           ) : null}
+          {visualSummary?.available ? (
+            <div className="grid gap-2 text-xs text-zinc-300 sm:grid-cols-4">
+              <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
+                <p className="text-zinc-500">Visual steps</p>
+                <p className="text-zinc-100">{visualSummary.visual_step_count ?? 0}</p>
+              </div>
+              <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
+                <p className="text-zinc-500">Visual hits</p>
+                <p className="text-zinc-100">{visualSummary.visual_hit_count ?? 0}</p>
+              </div>
+              <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
+                <p className="text-zinc-500">Planner rows</p>
+                <p className="text-zinc-100">{visualSummary.planner_query_count ?? 0}</p>
+              </div>
+              <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
+                <p className="text-zinc-500">Planner visual contribution</p>
+                <p className="text-zinc-100">
+                  {(visualSummary.planner_visual_contribution_rate ?? 0).toFixed(2)} (
+                  {visualSummary.planner_visual_contribution_count ?? 0})
+                </p>
+              </div>
+            </div>
+          ) : null}
           {plannerSweepSummary?.available ? (
             <div className="space-y-2 rounded-md border border-zinc-800 bg-zinc-950 p-3">
               <h4 className="text-xs font-semibold text-zinc-200">Planner sweep</h4>
@@ -275,7 +307,7 @@ export function EvalRunner() {
                     </p>
                     <p>
                       vote bonus {(variant.route_vote_bonus ?? 0.08).toFixed(2)} | overlap weight{" "}
-                      {(variant.rerank_overlap_weight ?? 0.15).toFixed(2)}
+                      {(variant.rerank_overlap_weight ?? 0.1).toFixed(2)}
                     </p>
                   </div>
                 ))}
