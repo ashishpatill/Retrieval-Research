@@ -16,6 +16,7 @@ from retrieval_research.evidence import build_knowledge_card
 from retrieval_research.ingest import ingest_path
 from retrieval_research.retrieval import (
     DEFAULT_RERANK_OVERLAP_WEIGHT,
+    DEFAULT_PLANNER_RERANK,
     DEFAULT_ROUTE_VOTE_BONUS,
     DEFAULT_COLPALI_MODEL,
     PLANNER_MERGE_STRATEGIES,
@@ -44,9 +45,9 @@ class QueryRequest(BaseModel):
     question: str = Field(min_length=1)
     document_id: Optional[str] = None
     top_k: int = Field(default=5, ge=1, le=50)
-    mode: str = "hybrid"
+    mode: str = "planner"
     planner_merge_strategy: str = "score_max"
-    planner_rerank: bool = False
+    planner_rerank: bool = DEFAULT_PLANNER_RERANK
     planner_route_vote_bonus: float = Field(default=DEFAULT_ROUTE_VOTE_BONUS, ge=0.0, le=1.0)
     planner_rerank_overlap_weight: float = Field(default=DEFAULT_RERANK_OVERLAP_WEIGHT, ge=0.0, le=1.0)
 
@@ -54,9 +55,9 @@ class QueryRequest(BaseModel):
 class EvalRequest(BaseModel):
     manifest: Dict[str, Any]
     top_k: int = Field(default=5, ge=1, le=50)
-    modes: List[str] = Field(default_factory=lambda: ["bm25", "dense", "hybrid", "planner"])
+    modes: List[str] = Field(default_factory=lambda: ["bm25", "dense", "late", "hybrid", "visual", "graph", "planner"])
     planner_merge_strategy: str = "score_max"
-    planner_rerank: bool = False
+    planner_rerank: bool = DEFAULT_PLANNER_RERANK
     planner_route_vote_bonus: float = Field(default=DEFAULT_ROUTE_VOTE_BONUS, ge=0.0, le=1.0)
     planner_rerank_overlap_weight: float = Field(default=DEFAULT_RERANK_OVERLAP_WEIGHT, ge=0.0, le=1.0)
     planner_sweep: bool = False
