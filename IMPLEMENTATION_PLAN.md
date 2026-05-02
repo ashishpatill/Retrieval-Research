@@ -4,7 +4,7 @@ This plan turns `retrieval_roadmap.md` into an implementation sequence for the p
 
 ## Progress status (session checkpoint)
 
-Last updated: 2026-05-01 (post planner tuning fixture sweep)
+Last updated: 2026-05-03 (phase 6 completion pass)
 
 Current milestone: **v0.3 (in progress)**
 
@@ -25,8 +25,16 @@ Completed:
   - Custom Next.js UI scaffold in `apps/web`.
   - Document library, document detail workspace, query workbench, eval page.
   - FastAPI backend surface in `retrieval_research/api.py`.
-- Phase 5 planner and adaptive routing (partial):
+- Phase 4 multimodal page retrieval (completed):
+  - Visual retrieval mode is available through CLI/API/UI.
+  - Baseline visual page index now includes OCR-independent image/layout profile signals for image-backed pages.
+  - Optional ColPali-compatible visual backend and `int8` compression path are wired for richer page retrieval.
+  - Visual routing is integrated into planner traces, eval reports, and query/eval UI diagnostics.
+  - Reproducible weak-OCR visual fixture and eval manifest builder are available via `scripts/build_visual_phase4_fixture.py`.
+  - Weak-OCR visual fixture validation shows visual and planner page hit rate at `1.000` (`data/runs/20260503_015241_064899`).
+- Phase 5 planner and adaptive routing (completed):
   - Query classifier and rule-based route selection.
+  - Query planner now exposes human-readable `route_explanation` in retrieval traces.
   - Route-specific planner settings (top-k factors and merge strategy) recorded in traces.
   - Evidence consolidation with redundancy/conflict annotations in `planner_merge`.
   - Confidence + answerability estimates added to knowledge cards and eval outputs.
@@ -34,8 +42,10 @@ Completed:
   - Planner merge controls support `score_max` and `route_vote`, plus optional query-overlap reranking.
   - Eval can benchmark planner merge/rerank variants and report best variants by MRR/confidence.
   - Planner route-vote and rerank-overlap weights are tunable across CLI, API, eval, and UI.
+  - CLI/API/core retrieval now default query mode to `planner`.
   - Added larger manifest templates for planner sweep benchmarking.
-- Phase 6 structured knowledge layer (initial progress):
+  - Default planner merge now optimizes for fixture MRR with `score_max` plus soft query-overlap reranking.
+- Phase 6 structured knowledge layer (completed baseline + hardening pass):
   - First graph-style retrieval path (`graph`) added with chunk-neighborhood expansion.
   - Planner can route graph-intent queries through graph retrieval.
   - Graph index now builds section, entity, and reference links in addition to page/chunk neighborhood links.
@@ -51,23 +61,28 @@ Completed:
   - Added a reproducible 10-document planner tuning fixture and local manifest builder.
   - Fixed section-aware chunk assignment so graph extraction preserves per-heading sections.
   - Ran the fixture sweep: `score_rerank_soft` led by MRR, while stronger route-vote rerank only increased confidence.
+  - Validated graph extraction recall on the 10-document fixture: expected entities, references, and sections all reached `1.000`.
+  - Added OCR-noise-tolerant reference normalization for section/figure/table/arXiv signals in graph extraction.
+  - Graph index adds section reading-order and numeric hierarchy edges (`next_section` / `previous_section` / `child_section` / `parent_section`) for planner and graph expansion.
+  - `document_profile.json` includes `structured_reference_inventory` (figures, tables, sections, citations, DOIs, arXiv, URLs) aligned with graph reference extraction.
 
 In progress / remaining for near-term roadmap:
 
-- Phase 4 completion:
-  - Broaden visual retrieval quality and benchmark on image/table-heavy corpora.
-- Phase 5 completion:
-  - Finalize planner defaults from fixture + real-corpus sweeps (`score_rerank_soft` for MRR, `route_vote` rerank for confidence).
-- Phase 6 continuation:
-  - Evaluate extraction quality on larger document samples and consider optional NLP/LLM extractors.
+- Phase 4 follow-up:
+  - Broaden visual retrieval quality benchmarks beyond fixture data on larger real image/table-heavy corpora.
+- Phase 5 follow-up:
+  - Continue classifier calibration on real mixed corpora and monitor planner-vs-static tradeoffs after default mode changes.
+- Phase 6 follow-up (ongoing quality expansion, non-blocking):
+  - Continue stress-testing graph extraction on noisier PDFs/OCR output and widen quality-tier corpora.
+  - Revisit optional NLP/LLM extractors only if normalized rule-based extraction still misses key entities/references.
 
 Next session start point:
 
-1. Decide whether to optimize planner defaults for MRR (`score_rerank_soft`) or confidence (`route_vote` rerank strong).
-2. Update default planner settings after product choice on the target metric.
-3. Evaluate graph extraction quality on larger document samples and consider optional NLP/LLM extractors.
+1. Start Phase 7 configuration system (models, storage paths, retrieval backends).
+2. Broaden visual retrieval quality benchmarks on larger real image/table-heavy corpora.
+3. Continue planner classifier calibration on mixed corpora while monitoring planner-vs-static deltas.
 
-Latest shipped increment (2026-05-01):
+Latest shipped increment (2026-05-03):
 
 - Added section/entity/reference-aware graph links and graph diagnostics on retrieval steps.
 - Added corpus-level graph retrieval for cross-document traversal and eval support for `document_ids`.
@@ -81,6 +96,21 @@ Latest shipped increment (2026-05-01):
 - Added planner sweep benchmarking across merge/rerank variants.
 - Added tunable `route_vote_bonus` and `rerank_overlap_weight` across CLI, API, eval, and UI.
 - Added larger benchmark manifest templates and executed real-corpus sweeps (`data/runs/20260501_235706_416794`, `data/runs/20260501_235750_488089`).
+- Selected the MRR-oriented planner default: `score_max` merge with query-overlap reranking at weight `0.10`.
+- Rebuilt the 10-document planner fixture and validated the default: MRR `0.736`, term hit `1.000`, citation support `1.000`, answerable `1.000` (`data/runs/20260503_013945_686187`).
+- Confirmed the latest sweep still picks `score_rerank_soft` by MRR and `route_vote_rerank_strong` by confidence.
+- Confirmed graph extraction quality on the fixture: 202 entities, 10 references, 21 sections, with expected entity/reference/section recall all at `1.000`.
+- Added a dedicated weak-OCR visual fixture builder (`scripts/build_visual_phase4_fixture.py`) and visual eval manifest example (`datasets/manifests/phase4_visual_eval.example.json`).
+- Validated weak-OCR visual retrieval and planner visual contribution diagnostics (`data/runs/20260503_015241_064899`).
+- Added visual diagnostics to eval reports (`visual_steps`, `visual_hits`, planner visual contribution rate) and the query/eval UI.
+- Changed CLI/API/core query defaults to planner-routed retrieval and added planner route explanations to traces.
+- Added regression tests for visual weak-OCR retrieval, planner default mode behavior, and tightened identifier routing heuristics.
+- Validated planner-vs-static comparison after default-mode change (`data/runs/20260503_015559_710856`).
+- Added Phase 6 OCR-noise normalization for reference extraction (`Sectlon`/`F1gure`/`Tab1e`/`arX1v` cases) with regression coverage.
+- Added section navigation edges on the graph index and reference inventory on document profiles; `DocumentProfile.from_dict` ignores unknown keys for forward-compatible artifacts.
+- Expanded OCR-noise normalization variants for graph reference extraction and added broader regression coverage.
+- Inspector document profile view now surfaces structured reference inventory with filter and per-kind copy actions.
+- Eval graph extraction summary now supports per-document quality tiers (`document_quality_tiers`) and reports tier-wise recall drift (`expected_*_by_tier`).
 - Added regression tests for graph artifact generation, corpus graph search, and diagnostics reporting.
 - Added reproducible planner tuning fixture docs and a builder that writes `data/generated/planner_tuning_sweep.local.json`.
 - Fixed chunk section assignment so graph artifacts retain multiple headings on the same page.
