@@ -11,7 +11,7 @@ sys.path.insert(0, str(ROOT))
 
 from retrieval_research.chunking import chunk_document
 from retrieval_research.ingest import ingest_path
-from retrieval_research.retrieval import build_indexes
+from retrieval_research.retrieval import DEFAULT_PLANNER_RERANK, DEFAULT_RERANK_OVERLAP_WEIGHT, DEFAULT_ROUTE_VOTE_BONUS, build_indexes
 from retrieval_research.storage import ArtifactStore
 
 CORPUS_DIR = ROOT / "datasets" / "corpora" / "planner_tuning"
@@ -88,9 +88,9 @@ def build_manifest(document_ids: List[str]) -> Dict[str, Any]:
     return {
         "document_ids": document_ids,
         "planner_merge_strategy": "score_max",
-        "planner_rerank": False,
-        "planner_route_vote_bonus": 0.08,
-        "planner_rerank_overlap_weight": 0.15,
+        "planner_rerank": DEFAULT_PLANNER_RERANK,
+        "planner_route_vote_bonus": DEFAULT_ROUTE_VOTE_BONUS,
+        "planner_rerank_overlap_weight": DEFAULT_RERANK_OVERLAP_WEIGHT,
         "planner_sweep": [
             {"name": "score_base", "merge_strategy": "score_max", "rerank": False},
             {
