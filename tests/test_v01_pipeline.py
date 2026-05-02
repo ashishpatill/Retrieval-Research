@@ -3,6 +3,9 @@ import unittest
 import json
 from pathlib import Path
 
+from PIL import Image, ImageDraw
+
+from retrieval_research.cli import build_parser
 from retrieval_research.chunking import chunk_document
 from retrieval_research.evidence import build_knowledge_card
 from retrieval_research.evaluation import run_eval
@@ -11,6 +14,8 @@ from retrieval_research.ingest import ingest_path
 from retrieval_research.retrieval import (
     BM25Index,
     ColPaliUnavailableError,
+    DEFAULT_PLANNER_RERANK,
+    DEFAULT_RERANK_OVERLAP_WEIGHT,
     DenseIndex,
     GraphIndex,
     LateInteractionIndex,
@@ -21,12 +26,24 @@ from retrieval_research.retrieval import (
 )
 from retrieval_research.retrieval.colpali import _load_runtime
 from retrieval_research.retrieval.compression import dequantize_int8, quantize_int8
+from retrieval_research.retrieval.graph import _references
 from retrieval_research.retrieval.service import _consolidate_planner_hits
-from retrieval_research.schema import Chunk, Evidence
+from retrieval_research.profiling import build_document_profile
+from retrieval_research.schema import Chunk, Document, DocumentProfile, Evidence, Page
 from retrieval_research.storage import ArtifactStore
 
 
 class V01PipelineTest(unittest.TestCase):
+    @staticmethod
+    def _draw_table_image(path: Path) -> None:
+        image = Image.new("RGB", (900, 600), "white")
+        draw = ImageDraw.Draw(image)
+        for x in range(80, 860, 120):
+            draw.line((x, 80, x, 540), fill="black", width=4)
+        for y in range(80, 560, 70):
+            draw.line((80, y, 860, y), fill="black", width=4)
+        image.save(path, format="PNG")
+
     def test_text_ingest_chunk_retrieve(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -119,7 +136,8 @@ class V01PipelineTest(unittest.TestCase):
             planner_merge = next(step for step in planner_steps if step["path"] == "planner_merge")
             self.assertIn("redundancy_groups", planner_merge)
             self.assertIn("conflicts_detected", planner_merge)
-            self.assertFalse(planner_merge["reranked"])
+            self.assertEqual(planner_merge["reranked"], DEFAULT_PLANNER_RERANK)
+            self.assertEqual(planner_merge["rerank_overlap_weight"], DEFAULT_RERANK_OVERLAP_WEIGHT)
             self.assertEqual(planner_merge["requested_top_k"], 3)
             self.assertEqual(planner_merge["merge_strategy"], "score_max")
             self.assertGreaterEqual(planner_merge["unique_chunks"], planner_merge["hits"])
@@ -135,9 +153,65 @@ class V01PipelineTest(unittest.TestCase):
             self.assertIn("hybrid", planner_vs_static["baseline_modes"])
             self.assertEqual(planner_vs_static["baseline_modes"], sorted(planner_vs_static["baseline_modes"]))
             self.assertIn("delta_vs_baseline_avg", planner_vs_static)
+            self.assertEqual(report["planner"]["rerank"], DEFAULT_PLANNER_RERANK)
             self.assertIn("knowledge_card", report["results"][0])
             self.assertEqual(loaded_report["top_k"], 3)
             self.assertIn("eval_report.json", next(run["files"] for run in runs if run["id"] == "eval_run"))
+
+    def test_visual_mode_handles_weak_ocr_fixture_and_reports_visual_metrics(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image_path = root / "table.png"
+            self._draw_table_image(image_path)
+            store = ArtifactStore(str(root / "data"))
+            document = ingest_path(str(image_path), store=store, run_ocr=False)
+            chunks = chunk_document(document, max_words=30, overlap_words=0)
+            store.save_chunks(document.id, chunks)
+            build_indexes(store, document.id, mode="all")
+
+            visual_hits, visual_steps = search_document(
+                store,
+                document.id,
+                "table with rows and columns",
+                mode="visual",
+                top_k=3,
+            )
+            planner_hits, planner_steps = search_document(
+                store,
+                document.id,
+                "visual table layout page image",
+                mode="planner",
+                top_k=3,
+            )
+            manifest = root / "visual_manifest.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "document_id": document.id,
+                        "queries": [
+                            {
+                                "query": "table with rows and columns",
+                                "expected_pages": [1],
+                                "expected_terms": [],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            report = run_eval(str(manifest), store=store, top_k=3, modes=["visual", "planner"])
+
+            self.assertGreaterEqual(len(visual_hits), 1)
+            self.assertEqual(visual_steps[-1]["path"], "visual")
+            self.assertIn("visual_profile", visual_hits[0].metadata)
+            self.assertGreater(len(visual_hits[0].metadata["visual_profile"]), 0)
+            self.assertTrue(any(step["path"] == "planner_merge" for step in planner_steps))
+            self.assertTrue(any("visual" in hit.metadata.get("source_paths", []) for hit in planner_hits))
+            self.assertIn("visual", report["metrics"]["modes"])
+            self.assertGreater(report["metrics"]["modes"]["visual"]["page_hit_rate"], 0.0)
+            visual_diag = report["metrics"]["visual_diagnostics"]
+            self.assertTrue(visual_diag["available"])
+            self.assertGreaterEqual(visual_diag["visual_step_count"], 1)
 
     def test_graph_index_builds_section_entity_and_reference_edges(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -170,6 +244,69 @@ class V01PipelineTest(unittest.TestCase):
             self.assertGreaterEqual(len(hits), 1)
             self.assertTrue(any("same_entity" in hit.metadata["graph_relations"] or "reference" in hit.metadata["graph_relations"] for hit in hits))
             self.assertGreater(steps[-1]["diagnostics"]["edge_count"], 0)
+
+    def test_graph_section_navigation_edges(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "sections.md"
+            source.write_text(
+                "# 2 Methods\n\nIntro methods body.\n\n"
+                "# 2.1 Setup\n\nSetup details body.\n\n"
+                "# 3 Results\n\nResults body.\n",
+                encoding="utf-8",
+            )
+            store = ArtifactStore(str(root / "data"))
+            document = ingest_path(str(source), store=store)
+            chunks = chunk_document(document, max_words=8, overlap_words=0)
+            store.save_chunks(document.id, chunks)
+            build_indexes(store, document.id, mode="graph")
+
+            graph_payload = store.load_index(document.id, "graph")
+            relation_counts = graph_payload["stats"]["relation_counts"]
+            self.assertGreater(relation_counts.get("next_section", 0), 0)
+            self.assertGreater(relation_counts.get("previous_section", 0), 0)
+            self.assertGreater(relation_counts.get("child_section", 0), 0)
+            self.assertGreater(relation_counts.get("parent_section", 0), 0)
+
+    def test_document_profile_structured_reference_inventory(self):
+        document = Document(
+            id="doc-inv",
+            source_path="inv.md",
+            title="Inventory",
+            pages=[
+                Page(
+                    id="p1",
+                    number=1,
+                    text="See Figure 1, Tab1e 2, and arX1v:1234.5678 for Section Alpha.",
+                )
+            ],
+        )
+        profile = build_document_profile(document)
+        inv = profile.structured_reference_inventory
+        self.assertIn("figure", inv)
+        self.assertIn("figure:1", inv["figure"])
+        self.assertIn("table", inv)
+        self.assertIn("table:2", inv["table"])
+        self.assertIn("arxiv", inv)
+        self.assertTrue(any(r.startswith("arxiv:") for r in inv["arxiv"]))
+        self.assertIn("section", inv)
+
+    def test_document_profile_from_dict_tolerates_legacy_and_extra_keys(self):
+        payload = {
+            "document_id": "legacy",
+            "title": "Legacy",
+            "source_type": "md",
+            "page_count": 1,
+            "text_page_count": 1,
+            "image_page_count": 0,
+            "total_words": 5,
+            "page_types": {"text": 1},
+            "unknown_future_key": {"x": 1},
+        }
+        profile = DocumentProfile.from_dict(payload)
+        self.assertEqual(profile.document_id, "legacy")
+        self.assertEqual(profile.structured_reference_inventory, {})
+        self.assertEqual(profile.headings, [])
 
     def test_planner_merge_strategy_and_rerank_controls(self):
         hits = [
@@ -342,9 +479,24 @@ class V01PipelineTest(unittest.TestCase):
                 json.dumps(
                     {
                         "document_ids": [first_doc.id, second_doc.id],
+                        "document_quality_tiers": {
+                            first_doc.id: "clean",
+                            second_doc.id: "noisy",
+                        },
                         "expected_entities": ["Acme Retrieval"],
                         "expected_references": ["section:bridge"],
                         "expected_sections": ["Bridge"],
+                        "expected_entities_by_tier": {
+                            "clean": ["Acme Retrieval"],
+                            "noisy": ["Acme Retrieval"],
+                        },
+                        "expected_references_by_tier": {
+                            "clean": ["section:bridge"],
+                            "noisy": ["section:bridge"],
+                        },
+                        "expected_sections_by_tier": {
+                            "noisy": ["Bridge"],
+                        },
                         "queries": [
                             {
                                 "query": "Acme Retrieval cross document routing",
@@ -366,6 +518,12 @@ class V01PipelineTest(unittest.TestCase):
             self.assertEqual(graph_extraction["expected_recall"]["entities"]["recall"], 1.0)
             self.assertEqual(graph_extraction["expected_recall"]["references"]["recall"], 1.0)
             self.assertEqual(graph_extraction["expected_recall"]["sections"]["recall"], 1.0)
+            by_tier = {item["quality_tier"]: item for item in graph_extraction["quality_tiers"]}
+            self.assertEqual(set(by_tier), {"clean", "noisy"})
+            self.assertEqual(by_tier["clean"]["document_count"], 1)
+            self.assertEqual(by_tier["noisy"]["document_count"], 1)
+            self.assertEqual(by_tier["clean"]["expected_recall"]["entities"]["recall"], 1.0)
+            self.assertEqual(by_tier["noisy"]["expected_recall"]["sections"]["recall"], 1.0)
             self.assertEqual(report["results"][0]["document_ids"], [first_doc.id, second_doc.id])
             planner_sweep = sweep_report["metrics"]["planner_sweep"]
             self.assertTrue(planner_sweep["available"])
@@ -400,11 +558,38 @@ class V01PipelineTest(unittest.TestCase):
     def test_planner_routes_plot_and_spreadsheet_queries(self):
         visual_plan = plan_query("show me the plot in this screenshot")
         table_plan = plan_query("find the spreadsheet total amount")
+        semantic_numeric_plan = plan_query("what happened in 2026 retrieval release")
+        identifier_plan = plan_query("lookup ID AB-1234")
 
         self.assertEqual(visual_plan.query_type, "visual")
         self.assertIn("visual", visual_plan.routes)
         self.assertEqual(table_plan.query_type, "table_or_form")
         self.assertIn("late", table_plan.routes)
+        self.assertEqual(semantic_numeric_plan.query_type, "semantic")
+        self.assertEqual(identifier_plan.query_type, "exact_lookup")
+        self.assertIn("route_explanation", visual_plan.to_dict())
+        self.assertTrue(visual_plan.route_explanation)
+
+    def test_cli_query_mode_defaults_to_planner(self):
+        parser = build_parser()
+        args = parser.parse_args(["query", "test query"])
+        self.assertEqual(args.mode, "planner")
+
+    def test_graph_reference_extraction_handles_ocr_like_noise(self):
+        noisy = "Sectlon 2.1 and F1gure 3 plus Tab1e 2 with arX1v: 2401.12345 and DOI 10.1000/XYZ."
+        refs = _references(noisy)
+        self.assertIn("section:2.1", refs)
+        self.assertIn("figure:3", refs)
+        self.assertIn("table:2", refs)
+        self.assertIn("arxiv:2401.12345", refs)
+        self.assertIn("doi:10.1000/xyz", refs)
+
+        noisy_alt = "SecTLon 4 cites F1G 5 and Tabie 7, plus arxlv:2402.54321."
+        refs_alt = _references(noisy_alt)
+        self.assertIn("section:4", refs_alt)
+        self.assertIn("figure:5", refs_alt)
+        self.assertIn("table:7", refs_alt)
+        self.assertIn("arxiv:2402.54321", refs_alt)
 
 
 if __name__ == "__main__":
