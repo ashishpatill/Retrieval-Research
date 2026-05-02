@@ -4,10 +4,15 @@
     "replace-with-document-id-2",
     "replace-with-document-id-3"
   ],
+  "document_quality_tiers": {
+    "replace-with-document-id-1": "clean",
+    "replace-with-document-id-2": "mixed",
+    "replace-with-document-id-3": "noisy_ocr"
+  },
   "planner_merge_strategy": "score_max",
-  "planner_rerank": false,
+  "planner_rerank": true,
   "planner_route_vote_bonus": 0.08,
-  "planner_rerank_overlap_weight": 0.15,
+  "planner_rerank_overlap_weight": 0.1,
   "planner_sweep": [
     {
       "name": "score_base",
@@ -57,5 +62,15 @@
       "query": "Summarize differences between hybrid and graph retrieval behavior.",
       "expected_terms": ["hybrid", "graph", "retrieval"]
     }
-  ]
+  ],
+  "expected_entities_by_tier": {
+    "clean": ["Retrieval", "Planner"],
+    "noisy_ocr": ["Retrieval"]
+  },
+  "expected_references_by_tier": {
+    "mixed": ["section:bridge"]
+  },
+  "expected_sections_by_tier": {
+    "clean": ["Introduction"]
+  }
 }
