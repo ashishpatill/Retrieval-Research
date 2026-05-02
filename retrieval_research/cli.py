@@ -11,6 +11,7 @@ from retrieval_research.evidence import build_knowledge_card
 from retrieval_research.evaluation.runner import report_to_markdown, run_eval
 from retrieval_research.ingest import ingest_path
 from retrieval_research.retrieval import (
+    DEFAULT_PLANNER_RERANK,
     DEFAULT_RERANK_OVERLAP_WEIGHT,
     DEFAULT_ROUTE_VOTE_BONUS,
     DEFAULT_COLPALI_MODEL,
@@ -191,9 +192,14 @@ def build_parser() -> argparse.ArgumentParser:
     query.add_argument("question")
     query.add_argument("--document-id")
     query.add_argument("--top-k", type=_positive_int, default=5)
-    query.add_argument("--mode", choices=RETRIEVAL_MODES, default="hybrid")
+    query.add_argument("--mode", choices=RETRIEVAL_MODES, default="planner")
     query.add_argument("--planner-merge-strategy", choices=PLANNER_MERGE_STRATEGIES, default="score_max")
-    query.add_argument("--planner-rerank", action="store_true", help="Apply lightweight query-overlap reranking to planner merges")
+    query.add_argument(
+        "--planner-rerank",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_PLANNER_RERANK,
+        help="Apply lightweight query-overlap reranking to planner merges",
+    )
     query.add_argument("--planner-route-vote-bonus", type=float, default=DEFAULT_ROUTE_VOTE_BONUS)
     query.add_argument("--planner-rerank-overlap-weight", type=float, default=DEFAULT_RERANK_OVERLAP_WEIGHT)
     query.set_defaults(func=cmd_query)
@@ -201,9 +207,19 @@ def build_parser() -> argparse.ArgumentParser:
     eval_parser = sub.add_parser("eval", help="Run a retrieval eval manifest")
     eval_parser.add_argument("manifest")
     eval_parser.add_argument("--top-k", type=_positive_int, default=5)
-    eval_parser.add_argument("--modes", nargs="+", choices=RETRIEVAL_MODES, default=["bm25", "dense", "late", "hybrid", "planner"])
+    eval_parser.add_argument(
+        "--modes",
+        nargs="+",
+        choices=RETRIEVAL_MODES,
+        default=["bm25", "dense", "late", "hybrid", "visual", "graph", "planner"],
+    )
     eval_parser.add_argument("--planner-merge-strategy", choices=PLANNER_MERGE_STRATEGIES, default="score_max")
-    eval_parser.add_argument("--planner-rerank", action="store_true", help="Apply lightweight query-overlap reranking to planner merges")
+    eval_parser.add_argument(
+        "--planner-rerank",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_PLANNER_RERANK,
+        help="Apply lightweight query-overlap reranking to planner merges",
+    )
     eval_parser.add_argument("--planner-route-vote-bonus", type=float, default=DEFAULT_ROUTE_VOTE_BONUS)
     eval_parser.add_argument("--planner-rerank-overlap-weight", type=float, default=DEFAULT_RERANK_OVERLAP_WEIGHT)
     eval_parser.add_argument("--planner-sweep", action="store_true", help="Benchmark all planner merge/rerank variants")
