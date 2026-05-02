@@ -71,6 +71,14 @@ class ApiTest(unittest.TestCase):
             self.assertIn("run_id", payload)
             self.assertTrue(payload["result"]["knowledge_card"]["answerable"])
 
+            default_query_res = client.post(
+                "/api/query",
+                json={"question": "keyword retrieval", "document_id": document.id, "top_k": 3},
+            )
+            self.assertEqual(default_query_res.status_code, 200)
+            default_payload = default_query_res.json()
+            self.assertEqual(default_payload["trace"]["mode"], "planner")
+
             runs_res = client.get("/api/runs")
             self.assertEqual(runs_res.status_code, 200)
             run_id = payload["run_id"]
