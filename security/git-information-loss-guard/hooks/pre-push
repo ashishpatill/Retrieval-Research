@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+PY_GUARD="$HOOK_DIR/_identity_guard.py"
+LOCAL="$HOOK_DIR/pre-push.local"
+
+python3 "$PY_GUARD" check-pre-push
+
+if [[ -x "$LOCAL" ]]; then
+  "$LOCAL" "$@"
+fi
