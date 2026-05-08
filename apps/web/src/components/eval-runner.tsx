@@ -1,6 +1,24 @@
 "use client";
 
 import { useState } from "react";
+import {
+  Beaker,
+  ChevronDown,
+  ChevronRight,
+  FlaskConical,
+  Network,
+  Settings2,
+  Eye,
+  BarChart3,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/input";
 import { apiBaseUrl } from "@/lib/api";
 
 type EvalResponse = {
@@ -96,6 +114,7 @@ export function EvalRunner() {
   const [plannerRouteVoteBonus, setPlannerRouteVoteBonus] = useState(0.08);
   const [plannerRerankOverlapWeight, setPlannerRerankOverlapWeight] = useState(0.1);
   const [plannerSweep, setPlannerSweep] = useState(false);
+  const [showPlannerOptions, setShowPlannerOptions] = useState(false);
   const [result, setResult] = useState<EvalResponse | null>(null);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -109,7 +128,7 @@ export function EvalRunner() {
       const manifest = JSON.parse(manifestText);
       const modes = modesText
         .split(",")
-        .map((mode) => mode.trim())
+        .map((m) => m.trim())
         .filter(Boolean);
 
       const response = await fetch(`${apiBaseUrl()}/api/eval`, {
@@ -153,216 +172,252 @@ export function EvalRunner() {
   const plannerSweepSummary = result?.report.metrics?.planner_sweep;
 
   return (
-    <div className="space-y-4">
-      <form onSubmit={onSubmit} className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-        <h2 className="text-sm font-semibold text-zinc-100">Run eval</h2>
-        <textarea
-          className="h-48 w-full rounded-md border border-zinc-700 bg-zinc-950 p-3 font-mono text-xs text-zinc-100"
-          value={manifestText}
-          onChange={(event) => setManifestText(event.target.value)}
-        />
-        <div className="grid grid-cols-2 gap-2">
-          <input
-            type="number"
-            value={topK}
-            min={1}
-            max={20}
-            onChange={(event) => setTopK(Number(event.target.value))}
-            className="rounded-md border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-100"
-          />
-          <input
-            value={modesText}
-            onChange={(event) => setModesText(event.target.value)}
-            className="rounded-md border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-100"
-            placeholder="bm25,dense,late,hybrid,visual,graph,planner"
-          />
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          <select
-            value={plannerMergeStrategy}
-            onChange={(event) => setPlannerMergeStrategy(event.target.value)}
-            className="rounded-md border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-100"
-          >
-            <option value="score_max">score_max merge</option>
-            <option value="route_vote">route_vote merge</option>
-          </select>
-          <label className="flex items-center gap-2 rounded-md border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-300">
-            <input
-              type="checkbox"
-              checked={plannerRerank}
-              onChange={(event) => setPlannerRerank(event.target.checked)}
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Beaker className="h-4 w-4" />
+          Run eval
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="manifest">Manifest (JSON)</Label>
+            <Textarea
+              id="manifest"
+              className="min-h-[160px] font-mono text-xs"
+              value={manifestText}
+              onChange={(e) => setManifestText(e.target.value)}
             />
-            Query-overlap rerank
-          </label>
-          <input
-            type="number"
-            min={0}
-            max={1}
-            step={0.01}
-            value={plannerRouteVoteBonus}
-            onChange={(event) => setPlannerRouteVoteBonus(Number(event.target.value))}
-            className="rounded-md border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-100"
-            placeholder="Route vote bonus"
-          />
-          <input
-            type="number"
-            min={0}
-            max={1}
-            step={0.01}
-            value={plannerRerankOverlapWeight}
-            onChange={(event) => setPlannerRerankOverlapWeight(Number(event.target.value))}
-            className="rounded-md border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-100"
-            placeholder="Rerank overlap weight"
-          />
-        </div>
-        <label className="flex items-center gap-2 rounded-md border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-300">
-          <input
-            type="checkbox"
-            checked={plannerSweep}
-            onChange={(event) => setPlannerSweep(event.target.checked)}
-          />
-          Benchmark all planner merge/rerank variants
-        </label>
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="rounded-md bg-indigo-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-        >
-          {isSubmitting ? "Running..." : "Run eval"}
-        </button>
-      </form>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="topK">Top-K</Label>
+              <Input id="topK" type="number" value={topK} min={1} max={20} onChange={(e) => setTopK(Number(e.target.value))} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="modes">Modes (comma separated)</Label>
+              <Input
+                id="modes"
+                value={modesText}
+                onChange={(e) => setModesText(e.target.value)}
+                placeholder="bm25,dense,late,hybrid,visual,graph,planner"
+              />
+            </div>
+          </div>
 
-      {error ? <p className="rounded-md border border-rose-900 bg-rose-950/40 p-3 text-sm text-rose-200">{error}</p> : null}
-
-      {result ? (
-        <section className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-          <h3 className="text-sm font-semibold text-zinc-100">Latest report</h3>
-          <p className="text-xs text-zinc-400">Run ID: {result.run_id}</p>
-          <p className="text-xs text-zinc-400">
-            Planner merge: {result.report.planner?.merge_strategy ?? "score_max"} | rerank:{" "}
-            {String(result.report.planner?.rerank ?? true)}
-          </p>
-          <p className="text-xs text-zinc-400">
-            Vote bonus: {(result.report.planner?.route_vote_bonus ?? 0.08).toFixed(2)} | Overlap weight:{" "}
-            {(result.report.planner?.rerank_overlap_weight ?? 0.1).toFixed(2)}
-          </p>
-          {graphSummary?.available ? (
-            <div className="grid gap-2 text-xs text-zinc-300 sm:grid-cols-4">
-              <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
-                <p className="text-zinc-500">Graph steps</p>
-                <p className="text-zinc-100">{graphSummary.step_count ?? 0}</p>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowPlannerOptions(!showPlannerOptions)}
+            className="flex items-center gap-1 text-xs text-muted-foreground"
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+            Planner options
+            {showPlannerOptions ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          </Button>
+          {showPlannerOptions && (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-2">
+                <Label className="text-xs">Merge</Label>
+                <Select value={plannerMergeStrategy} onValueChange={setPlannerMergeStrategy}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="score_max">score_max</SelectItem>
+                    <SelectItem value="route_vote">route_vote</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
-                <p className="text-zinc-500">Avg seeds</p>
-                <p className="text-zinc-100">{(graphSummary.avg_seed_count ?? 0).toFixed(2)}</p>
+              <div className="flex items-end gap-2 pb-1">
+                <Checkbox id="sweepRerank" checked={plannerRerank} onCheckedChange={(v) => setPlannerRerank(!!v)} />
+                <Label htmlFor="sweepRerank" className="text-xs font-normal">Rerank</Label>
               </div>
-              <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
-                <p className="text-zinc-500">Avg expanded</p>
-                <p className="text-zinc-100">{(graphSummary.avg_expanded_count ?? 0).toFixed(2)}</p>
+              <div className="space-y-2">
+                <Label className="text-xs">Vote bonus</Label>
+                <Input
+                  type="number"
+                  min={0} max={1} step={0.01}
+                  value={plannerRouteVoteBonus}
+                  onChange={(e) => setPlannerRouteVoteBonus(Number(e.target.value))}
+                  className="h-8 text-xs"
+                />
               </div>
-              <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
-                <p className="text-zinc-500">Max docs</p>
-                <p className="text-zinc-100">{graphSummary.max_document_count ?? 1}</p>
+              <div className="space-y-2">
+                <Label className="text-xs">Overlap weight</Label>
+                <Input
+                  type="number"
+                  min={0} max={1} step={0.01}
+                  value={plannerRerankOverlapWeight}
+                  onChange={(e) => setPlannerRerankOverlapWeight(Number(e.target.value))}
+                  className="h-8 text-xs"
+                />
               </div>
             </div>
-          ) : null}
-          {visualSummary?.available ? (
-            <div className="grid gap-2 text-xs text-zinc-300 sm:grid-cols-4">
-              <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
-                <p className="text-zinc-500">Visual steps</p>
-                <p className="text-zinc-100">{visualSummary.visual_step_count ?? 0}</p>
+          )}
+
+          <div className="flex items-center gap-2">
+            <Checkbox id="sweep" checked={plannerSweep} onCheckedChange={(v) => setPlannerSweep(!!v)} />
+            <Label htmlFor="sweep" className="text-xs font-normal">Benchmark all planner variants</Label>
+          </div>
+
+          <Button type="submit" disabled={isSubmitting}>
+            <FlaskConical className="h-4 w-4" />
+            {isSubmitting ? "Running..." : "Run eval"}
+          </Button>
+        </form>
+      </CardContent>
+
+      {error && (
+        <CardContent>
+          <p className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive-foreground">
+            {error}
+          </p>
+        </CardContent>
+      )}
+
+      {result && (
+        <CardContent className="space-y-4 border-t pt-4">
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary">{result.run_id}</Badge>
+            <span className="text-xs text-muted-foreground">
+              {result.report.planner?.merge_strategy} | rerank: {String(result.report.planner?.rerank ?? true)}
+            </span>
+          </div>
+
+          {graphSummary?.available && (
+            <div className="grid gap-2 sm:grid-cols-4">
+              <div className="rounded-lg border bg-card p-2">
+                <p className="text-[10px] text-muted-foreground">Graph steps</p>
+                <p className="text-sm font-semibold">{graphSummary.step_count ?? 0}</p>
               </div>
-              <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
-                <p className="text-zinc-500">Visual hits</p>
-                <p className="text-zinc-100">{visualSummary.visual_hit_count ?? 0}</p>
+              <div className="rounded-lg border bg-card p-2">
+                <p className="text-[10px] text-muted-foreground">Avg seeds</p>
+                <p className="text-sm font-semibold">{(graphSummary.avg_seed_count ?? 0).toFixed(2)}</p>
               </div>
-              <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
-                <p className="text-zinc-500">Planner rows</p>
-                <p className="text-zinc-100">{visualSummary.planner_query_count ?? 0}</p>
+              <div className="rounded-lg border bg-card p-2">
+                <p className="text-[10px] text-muted-foreground">Avg expanded</p>
+                <p className="text-sm font-semibold">{(graphSummary.avg_expanded_count ?? 0).toFixed(2)}</p>
               </div>
-              <div className="rounded-md border border-zinc-800 bg-zinc-950 p-2">
-                <p className="text-zinc-500">Planner visual contribution</p>
-                <p className="text-zinc-100">
-                  {(visualSummary.planner_visual_contribution_rate ?? 0).toFixed(2)} (
-                  {visualSummary.planner_visual_contribution_count ?? 0})
+              <div className="rounded-lg border bg-card p-2">
+                <p className="text-[10px] text-muted-foreground">Max docs</p>
+                <p className="text-sm font-semibold">{graphSummary.max_document_count ?? 1}</p>
+              </div>
+            </div>
+          )}
+
+          {visualSummary?.available && (
+            <div className="grid gap-2 sm:grid-cols-4">
+              <div className="rounded-lg border bg-card p-2">
+                <p className="text-[10px] text-muted-foreground">Visual steps</p>
+                <p className="text-sm font-semibold">{visualSummary.visual_step_count ?? 0}</p>
+              </div>
+              <div className="rounded-lg border bg-card p-2">
+                <p className="text-[10px] text-muted-foreground">Hits</p>
+                <p className="text-sm font-semibold">{visualSummary.visual_hit_count ?? 0}</p>
+              </div>
+              <div className="rounded-lg border bg-card p-2">
+                <p className="text-[10px] text-muted-foreground">Planner rows</p>
+                <p className="text-sm font-semibold">{visualSummary.planner_query_count ?? 0}</p>
+              </div>
+              <div className="rounded-lg border bg-card p-2">
+                <p className="text-[10px] text-muted-foreground">Contribution</p>
+                <p className="text-sm font-semibold">
+                  {(visualSummary.planner_visual_contribution_rate ?? 0).toFixed(2)}
                 </p>
               </div>
             </div>
-          ) : null}
-          {plannerSweepSummary?.available ? (
-            <div className="space-y-2 rounded-md border border-zinc-800 bg-zinc-950 p-3">
-              <h4 className="text-xs font-semibold text-zinc-200">Planner sweep</h4>
-              <p className="text-xs text-zinc-400">
-                Best MRR: {plannerSweepSummary.best_by_mrr} | Best confidence:{" "}
-                {plannerSweepSummary.best_by_confidence}
+          )}
+
+          {plannerSweepSummary?.available && (
+            <div className="rounded-lg border bg-card p-3">
+              <h4 className="flex items-center gap-1.5 text-xs font-semibold">
+                <BarChart3 className="h-3.5 w-3.5" />
+                Planner sweep
+              </h4>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Best MRR: <span className="font-medium text-foreground">{plannerSweepSummary.best_by_mrr}</span>
+                {" | "}Best confidence: <span className="font-medium text-foreground">{plannerSweepSummary.best_by_confidence}</span>
               </p>
-              <div className="grid gap-2 md:grid-cols-2">
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
                 {(plannerSweepSummary.variants ?? []).map((variant) => (
-                  <div key={variant.name} className="rounded border border-zinc-800 bg-zinc-900 p-2 text-xs text-zinc-300">
-                    <p className="font-medium text-zinc-100">{variant.name}</p>
-                    <p>
-                      {variant.merge_strategy} | rerank {String(variant.rerank)} | MRR{" "}
-                      {(variant.metrics?.mrr ?? 0).toFixed(3)} | confidence{" "}
+                  <div key={variant.name} className="rounded border bg-card p-2 text-xs">
+                    <p className="font-medium">{variant.name}</p>
+                    <p className="mt-0.5 text-muted-foreground">
+                      {variant.merge_strategy} | MRR {(variant.metrics?.mrr ?? 0).toFixed(3)} | conf{" "}
                       {(variant.metrics?.avg_confidence ?? 0).toFixed(3)}
-                    </p>
-                    <p>
-                      vote bonus {(variant.route_vote_bonus ?? 0.08).toFixed(2)} | overlap weight{" "}
-                      {(variant.rerank_overlap_weight ?? 0.1).toFixed(2)}
                     </p>
                   </div>
                 ))}
               </div>
             </div>
-          ) : null}
-          {graphRows.length ? (
-            <div className="space-y-2 rounded-md border border-zinc-800 bg-zinc-950 p-3">
-              <h4 className="text-xs font-semibold text-zinc-200">Graph retrieval diagnostics</h4>
-              {graphRows.map((row, index) => (
-                <div key={`${row.query}-${row.mode}-${index}`} className="text-xs text-zinc-300">
-                  <span className="text-zinc-100">{row.mode}</span> {row.query}: seeds{" "}
+          )}
+
+          {graphRows.length > 0 && (
+            <div className="rounded-lg border bg-card p-3">
+              <h4 className="flex items-center gap-1.5 text-xs font-semibold">
+                <Network className="h-3.5 w-3.5" />
+                Graph retrieval diagnostics
+              </h4>
+              {graphRows.map((row, idx) => (
+                <p key={`${row.query}-${row.mode}-${idx}`} className="mt-1 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">{row.mode}</span> {row.query}: seeds{" "}
                   {row.diagnostics?.seed_count ?? 0}, expanded {row.diagnostics?.expanded_count ?? 0}
-                </div>
+                </p>
               ))}
             </div>
-          ) : null}
-          {extractionSummary?.available ? (
-            <div className="space-y-2 rounded-md border border-zinc-800 bg-zinc-950 p-3">
-              <h4 className="text-xs font-semibold text-zinc-200">Graph extraction quality</h4>
-              <div className="grid gap-2 text-xs text-zinc-300 sm:grid-cols-4">
-                <div className="rounded border border-zinc-800 bg-zinc-900 p-2">
-                  <p className="text-zinc-500">Graph docs</p>
-                  <p className="text-zinc-100">{extractionSummary.document_count ?? 0}</p>
+          )}
+
+          {extractionSummary?.available && (
+            <div className="rounded-lg border bg-card p-3">
+              <h4 className="flex items-center gap-1.5 text-xs font-semibold">
+                <Eye className="h-3.5 w-3.5" />
+                Graph extraction quality
+              </h4>
+              <div className="mt-2 grid gap-2 sm:grid-cols-4">
+                <div className="rounded border bg-card p-2">
+                  <p className="text-[10px] text-muted-foreground">Docs</p>
+                  <p className="text-sm font-semibold">{extractionSummary.document_count ?? 0}</p>
                 </div>
-                <div className="rounded border border-zinc-800 bg-zinc-900 p-2">
-                  <p className="text-zinc-500">Sections</p>
-                  <p className="text-zinc-100">{extractionSummary.totals?.section_count ?? 0}</p>
+                <div className="rounded border bg-card p-2">
+                  <p className="text-[10px] text-muted-foreground">Sections</p>
+                  <p className="text-sm font-semibold">{extractionSummary.totals?.section_count ?? 0}</p>
                 </div>
-                <div className="rounded border border-zinc-800 bg-zinc-900 p-2">
-                  <p className="text-zinc-500">Entities</p>
-                  <p className="text-zinc-100">{extractionSummary.totals?.entity_count ?? 0}</p>
+                <div className="rounded border bg-card p-2">
+                  <p className="text-[10px] text-muted-foreground">Entities</p>
+                  <p className="text-sm font-semibold">{extractionSummary.totals?.entity_count ?? 0}</p>
                 </div>
-                <div className="rounded border border-zinc-800 bg-zinc-900 p-2">
-                  <p className="text-zinc-500">References</p>
-                  <p className="text-zinc-100">{extractionSummary.totals?.reference_count ?? 0}</p>
+                <div className="rounded border bg-card p-2">
+                  <p className="text-[10px] text-muted-foreground">References</p>
+                  <p className="text-sm font-semibold">{extractionSummary.totals?.reference_count ?? 0}</p>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {Object.entries(extractionSummary.expected_recall ?? {})
-                  .filter(([, recall]) => recall.available)
-                  .map(([label, recall]) => (
-                    <span key={label} className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-300">
-                      {label}: {recall.hit_count ?? 0}/{recall.expected_count ?? 0} (
-                      {((recall.recall ?? 0) * 100).toFixed(0)}%)
-                    </span>
+                  .filter(([, r]) => r.available)
+                  .map(([label, r]) => (
+                    <Badge key={label} variant="outline" className="text-[10px]">
+                      {label}: {r.hit_count ?? 0}/{r.expected_count ?? 0} ({(r.recall ?? 0) * 100}%)
+                    </Badge>
                   ))}
               </div>
             </div>
-          ) : null}
-          <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-xs text-zinc-200">
-            {JSON.stringify(result.report, null, 2)}
-          </pre>
-        </section>
-      ) : null}
-    </div>
+          )}
+
+          <div className="rounded-lg border bg-card p-3">
+            <details>
+              <summary className="cursor-pointer text-xs font-semibold text-muted-foreground hover:text-foreground">
+                Raw report JSON
+              </summary>
+              <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
+                {JSON.stringify(result.report, null, 2)}
+              </pre>
+            </details>
+          </div>
+        </CardContent>
+      )}
+    </Card>
   );
 }
