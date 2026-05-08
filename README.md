@@ -73,6 +73,64 @@ NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000 npm run dev
 
 Open `http://localhost:3000` for the custom UI.
 
+## Background Jobs
+
+Long-running operations (ingest, chunk, index) can be submitted as background jobs via CLI or API:
+
+```bash
+# Start the worker in a separate terminal
+python3 -m retrieval_research.cli worker
+
+# Submit jobs asynchronously (CLI)
+python3 -m retrieval_research.cli ingest large.pdf --async
+python3 -m retrieval_research.cli chunk <document-id> --async
+python3 -m retrieval_research.cli index <document-id> --async
+
+# Check job status
+python3 -m retrieval_research.cli jobs
+python3 -m retrieval_research.cli job-status <job_id>
+```
+
+The API also exposes job endpoints:
+
+```bash
+# Ingest returns immediately with a job_id by default
+curl -X POST -F "file=@doc.pdf" http://localhost:8000/api/documents/ingest
+
+# Check status
+curl http://localhost:8000/api/jobs/<job_id>
+
+# List all jobs
+curl http://localhost:8000/api/jobs
+
+# Use ?sync=true for synchronous execution (backward compat)
+curl -X POST -F "file=@doc.pdf" http://localhost:8000/api/documents/ingest?sync=true
+```
+
+The `--store` flag configures the artifact root (default: `$RR_DATA_ROOT` or `data/`). Job storage uses `RR_JOBS_ROOT` (default: `data/jobs/`).
+
+## Visual Broad Benchmark
+
+A diverse visual benchmark evaluates page retrieval across 6 synthetic document types:
+
+| Fixture | Layout Type | Description |
+|---------|------------|-------------|
+| `dense_table` | Rich data table | 9-row company table with revenue, growth, employees |
+| `application_form` | Form layout | Employment form with labeled fields and submit button |
+| `text_with_figure` | Mixed text + diagram | Research article with embedded architecture figure |
+| `bar_chart` | Chart visualization | Quarterly revenue bar chart by region |
+| `pie_chart` | Chart visualization | Market share pie chart by vendor |
+| `financial_metrics` | Sparse table | Key financial metrics with values and changes |
+
+To build and run:
+
+```bash
+python3 scripts/build_visual_broad_benchmark.py
+python3 -m retrieval_research.cli eval data/generated/visual_broad_benchmark_eval.json --modes visual planner
+```
+
+Current baseline: visual page_hit_rate=1.000, planner page_hit_rate=0.800 on 10 queries across 6 fixture documents.
+
 ## Retrieval v0.1 CLI
 
 The CLI stores artifacts under `data/` and can ingest text/Markdown, prior history JSON, images, and PDFs. Image/PDF OCR is opt-in because local OCR model startup is expensive.
