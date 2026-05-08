@@ -19,7 +19,7 @@ export function IngestForm() {
 
     setIsSubmitting(true);
     try {
-      const response = await fetch(`${apiBaseUrl()}/api/documents/ingest`, {
+      const response = await fetch(`${apiBaseUrl()}/api/documents/ingest?sync=true`, {
         method: "POST",
         body: data,
       });
