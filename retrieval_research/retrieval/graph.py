@@ -26,6 +26,10 @@ DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:A-Z0-9]+\b", re.IGNORECASE)
 ARXIV_RE = re.compile(r"\barXiv:\s*([0-9]{4}\.[0-9]{4,5}(?:v\d+)?)\b", re.IGNORECASE)
 URL_RE = re.compile(r"\bhttps?://[^\s)>\]]+")
 NUMERIC_VALUE_RE = re.compile(r"[A-Z]?\d+(?:\.\d+)*")
+NUMERIC_RANGE_RE = re.compile(
+    r"([A-Z]?\d+(?:\.\d+)?)\s*[-–—to]+\s*([A-Z]?\d+(?:\.\d+)?)",
+    re.IGNORECASE,
+)
 
 ENTITY_STOPWORDS = {
     "A",
@@ -118,7 +122,20 @@ def _entities(text: str) -> set[str]:
 
 
 def _number_values(value: str) -> set[str]:
-    return {match.group(0).lower() for match in NUMERIC_VALUE_RE.finditer(value)}
+    values = {match.group(0).lower() for match in NUMERIC_VALUE_RE.finditer(value)}
+    for match in NUMERIC_RANGE_RE.finditer(value):
+        a_raw, b_raw = match.group(1), match.group(2)
+        prefix = re.sub(r"\d+", "", a_raw).lower()
+        a_digits = re.search(r"\d+", a_raw)
+        b_digits = re.search(r"\d+", b_raw)
+        if a_digits and b_digits:
+            try:
+                a, b = int(a_digits.group()), int(b_digits.group())
+                for i in range(a + 1, b):
+                    values.add(f"{prefix}{i}".lower())
+            except ValueError:
+                pass
+    return values
 
 
 def _section_aliases(section: str | None) -> set[str]:
