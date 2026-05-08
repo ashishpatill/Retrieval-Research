@@ -1,5 +1,9 @@
 # Retrieval, Document Intelligence, and Knowledge Processing Roadmap
 
+> **Implementation progress (2026-05-09):** The companion codebase has completed v0.3 scope covering Phases 0-7: foundation schema/ingestion, BM25/dense/late/hybrid retrieval, evaluation harness, multimodal visual page retrieval (baseline + ColPali), planner with rule-based routing and merge/rerank controls, structured knowledge layer (graph extraction with OCR noise normalization, range expansion, section hierarchy aliases), and hardening (config system, background jobs, Docker, error handling). The Next.js inspector UI has been overhauled with shadcn-style primitives, lucide-react icons, and a professional dark theme. All 77 Python tests pass.
+>
+> See `IMPLEMENTATION_PLAN.md` for the phased build plan and `README.md` for quick-start instructions.
+
 This document consolidates the strongest RAG-adjacent themes from prior work into a single open-source project roadmap and a parallel research roadmap. The source material points to four core foundations: retrieval research as an ongoing project, investigation into the limitations of standard vector-search RAG, advanced document-processing pipelines for complex PDFs, and substantial attention to multimodal retrieval and chunking techniques such as ColPali, HPC-ColPali, and mixture-of-experts chunking.[cite:4][cite:1][cite:10][cite:31][cite:32][cite:33]
 
 The best project direction is not a narrow chatbot. It is a modular system for **retrieval, document extraction and processing, knowledge processing, storage, and communication** that treats documents as multimodal, structured knowledge objects rather than plain text blobs.[cite:1][cite:10][cite:31][cite:32] The best research direction is a next-generation retrieval architecture that combines OCR, layout understanding, adaptive chunking, multimodal indexing, hybrid retrieval, and agentic reasoning into one measurable framework.[cite:1][cite:10][cite:31][cite:32][cite:33]

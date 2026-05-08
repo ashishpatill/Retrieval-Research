@@ -10,23 +10,21 @@ This app is the Next.js inspector frontend for the retrieval research backend.
 - Graph retrieval diagnostics in query and eval views
 - Document-level knowledge graph stats in the detail page
 
-## Progress Snapshot (2026-05-03)
+## Progress Snapshot (2026-05-09 — UI/UX Overhaul)
 
-- Phase 6 inspector updates are complete for graph/profile diagnostics.
-- Query workbench surfaces graph diagnostics (seed/expanded stats and relation summaries).
-- Query workbench can filter graph evidence by expanded relation.
-- Query and eval forms expose planner merge strategy and query-overlap rerank controls.
-- Query and eval forms default to the current planner setting: `score_max` merge with query-overlap reranking enabled at weight `0.10`.
-- Query and eval forms now default eval modes to include `visual` and `graph` so multimodal diagnostics are visible by default.
-- Eval runner can benchmark all planner merge/rerank variants and summarize the best variants.
-- Query and eval forms expose route-vote bonus and overlap-rerank weight controls for tuning.
-- Query workbench now includes visual diagnostics with evidence profile metadata (`image_path`, inferred visual profile tokens).
-- Knowledge cards now display unresolved ambiguity notes and follow-up retrieval suggestions.
-- Eval runner includes aggregate graph diagnostics and per-query graph trace snippets.
-- Eval runner also includes visual diagnostics (`visual_step_count`, `visual_hit_count`, planner visual contribution rate).
-- Eval runner summarizes graph extraction counts and expected entity/reference/section recall.
-- Document detail page shows graph index readiness plus filterable sections, entities, references, and relation counts.
-- Document profile panel now surfaces structured reference inventory with in-panel filtering and per-kind copy actions.
+- Complete UI redesign with professional dark theme and shadcn-style component system.
+- Added 9 UI primitives: Button, Card, Badge, Input/Textarea, Select, Tabs, Dialog, Checkbox, Label, Skeleton — all built on `@radix-ui/*` headless primitives and `class-variance-authority`.
+- Navigation upgraded to sticky header with backdrop blur, lucide-react icons, and active state highlighting.
+- Dashboard redesigned with color-coded stat cards, icon-badged document list, and consistent spacing.
+- Documents list uses card-based layout with source badges and page counts.
+- Document detail shows index status badges, stat cards (pages/chunks/indexes/source type), and page previews.
+- Ingest form uses Select and Checkbox primitives with proper labels and layout.
+- Query workbench redesigned with collapsible planner options section, card-based answer/knowledge card/results layout, and graph/visual diagnostics as separate cards.
+- Knowledge graph inspector uses Tabs for entities/sections/references with relation filter Select and search input.
+- Document profile panel shows reference inventory as card grid with badge counters.
+- Eval runner redesigned with structured metrics grid, collapsible planner options, and raw report JSON in collapsible details element.
+- All forms use proper label+input associations, consistent spacing, and responsive grid layouts.
+- Next.js build compiles with zero errors.
 
 ## Local Development
 
