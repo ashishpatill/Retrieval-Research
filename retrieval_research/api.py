@@ -87,9 +87,21 @@ def create_app(store_root: str | None = None) -> FastAPI:
 
     # ── Health ────────────────────────────────────────────────────────────
 
+    try:
+        from core_processor.mlx_backend import is_mlx_available as _is_mlx_available
+    except Exception:
+        _is_mlx_available = lambda: False  # type: ignore[assignment]
+
     @app.get("/api/health")
-    def health() -> Dict[str, str]:
-        return {"status": "ok", "service": "retrieval-research-api", "version": "0.1.0"}
+    def health() -> Dict[str, Any]:
+        gemini_ok = bool(_settings.gemini_api_key)
+        return {
+            "status": "ok",
+            "service": "retrieval-research-api",
+            "version": "0.1.0",
+            "mlx_available": _is_mlx_available(),
+            "gemini_configured": gemini_ok,
+        }
 
     # ── Documents ─────────────────────────────────────────────────────────
 
