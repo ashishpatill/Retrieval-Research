@@ -1,6 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { Upload } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { apiBaseUrl } from "@/lib/api";
 
 export function IngestForm() {
@@ -13,7 +20,7 @@ export function IngestForm() {
     const form = event.currentTarget;
     const data = new FormData(form);
     if (!data.get("file")) {
-      setMessage("Pick a file first.");
+      setMessage("Select a file first.");
       return;
     }
 
@@ -27,7 +34,7 @@ export function IngestForm() {
       if (!response.ok) {
         setMessage(payload?.detail || "Upload failed.");
       } else {
-        setMessage(`Ingested document ${payload.document_id}. Refresh to see it in the list.`);
+        setMessage(`Ingested: ${payload.document_id}. Refresh to see it.`);
         form.reset();
       }
     } catch (error) {
@@ -38,43 +45,48 @@ export function IngestForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-      <h3 className="text-sm font-semibold text-zinc-100">Ingest document</h3>
-      <input
-        type="file"
-        name="file"
-        className="block w-full rounded-md border border-zinc-700 bg-zinc-950 p-2 text-sm text-zinc-200"
-      />
-      <div className="grid grid-cols-3 gap-2">
-        <label className="flex items-center gap-2 text-xs text-zinc-300">
-          <input type="checkbox" name="ocr" value="true" />
-          OCR
-        </label>
-        <select
-          name="mode"
-          defaultValue="Hybrid"
-          className="rounded-md border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-200"
-        >
-          <option value="Hybrid">Hybrid</option>
-          <option value="Pure Local">Pure Local</option>
-          <option value="Pure Cloud">Pure Cloud</option>
-        </select>
-        <input
-          type="number"
-          name="dpi"
-          defaultValue={150}
-          min={72}
-          className="rounded-md border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-200"
-        />
-      </div>
-      <button
-        type="submit"
-        disabled={isSubmitting}
-        className="rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-      >
-        {isSubmitting ? "Ingesting..." : "Upload and ingest"}
-      </button>
-      {message ? <p className="text-xs text-zinc-300">{message}</p> : null}
-    </form>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Upload className="h-4 w-4" />
+          Ingest document
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="file">File</Label>
+            <Input id="file" type="file" name="file" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="mode">Mode</Label>
+              <Select name="mode" defaultValue="Hybrid">
+                <SelectTrigger id="mode">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Hybrid">Hybrid</SelectItem>
+                  <SelectItem value="Pure Local">Pure Local</SelectItem>
+                  <SelectItem value="Pure Cloud">Pure Cloud</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="dpi">DPI</Label>
+              <Input id="dpi" type="number" name="dpi" defaultValue={150} min={72} />
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox id="ocr" name="ocr" value="true" />
+            <Label htmlFor="ocr" className="text-sm font-normal">Run OCR</Label>
+          </div>
+          <Button type="submit" disabled={isSubmitting} className="w-full">
+            {isSubmitting ? "Ingesting..." : "Upload & ingest"}
+          </Button>
+          {message && <p className="text-xs text-muted-foreground">{message}</p>}
+        </form>
+      </CardContent>
+    </Card>
   );
 }
