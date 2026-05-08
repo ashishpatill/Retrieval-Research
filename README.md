@@ -17,30 +17,21 @@ Features:
 - Persisted `knowledge_graph.json` artifacts and cross-document graph search over shared entities/references
 - Eval reports with planner-vs-static comparison metrics
 
-## Progress Snapshot (2026-05-03)
+## Progress Snapshot (2026-05-09)
 
-- Phase 6 structured knowledge layer is complete for the planned v0.3 scope.
+- Phase 6 graph extraction quality expanded: numeric range expansion (`Figures 1-3` now produces all intermediate values), section hierarchy aliases with parent prefix generation (`3.2.1` produces `3`, `3.2`), and 9 new OCR noise patterns (`sect1on`, `chapte r`, `appenclix`, `equat10n`, etc.).
+- Phase 7 UI/UX overhaul complete: professional dark theme with shadcn/ui component primitives (Button, Card, Badge, Tabs, Select, Dialog, Checkbox), lucide-react icons, collapsible planner controls, and consistent card-based layouts across all pages.
+- All 77 Python tests pass; Next.js build compiles with zero errors.
 - Retrieval foundation is stable across `bm25`, `dense`, `late`, `hybrid`, `visual`, `graph`, and `planner` modes.
-- Graph retrieval now traverses section/entity/reference links and emits diagnostics in retrieval traces.
+- Graph retrieval traverses section/entity/reference links and emits diagnostics in retrieval traces.
 - Multi-document graph querying is available through corpus search and eval manifests via `document_ids`.
-- Planner mode is now the default query path across CLI/API/core retrieval, and routes multi-document graph-intent queries through corpus-level graph traversal.
-- Planner mode supports `score_max` and `route_vote` merge strategies plus optional query-overlap reranking.
-- Eval can sweep planner merge/rerank variants and report best variants by MRR/confidence.
-- Planner defaults now favor the MRR-leading sweep variant: `score_max` merge with soft query-overlap reranking.
+- Planner mode is the default query path across CLI/API/core retrieval, routing multi-document graph-intent queries through corpus-level graph traversal.
+- Planner supports `score_max` and `route_vote` merge strategies plus optional query-overlap reranking; eval can sweep variants and report best by MRR/confidence.
 - Latest 10-document fixture validation: planner MRR `0.736`, term hit `1.000`, citation support `1.000`, answerable `1.000`.
-- Latest sweep winner remains `score_rerank_soft` by MRR, with `route_vote_rerank_strong` retained as a confidence-oriented experiment.
-- Planner route-vote and overlap-rerank weights are tunable, with large-manifest templates under `datasets/manifests/`.
-- A reproducible weak-OCR visual fixture now validates visual retrieval quality and planner visual contribution diagnostics (`scripts/build_visual_phase4_fixture.py`).
-- Query and eval UI surfaces graph diagnostics, and document pages expose filterable knowledge-graph artifacts.
-- Query and eval UI now surface visual diagnostics (visual steps/hits and planner visual contribution rate).
-- Graph extraction recognizes acronym definitions, quoted concepts, section aliases, numeric ranges, and DOI/arXiv/URL references.
-- Graph extraction now normalizes common OCR reference noise (for example `Sectlon`, `F1gure`, `Tab1e`, `arX1v`, `Tabie`, `arxlv`) before reference parsing.
-- Eval reports summarize graph extraction counts and optional expected entity/reference/section recall.
-- Eval graph extraction summary now supports quality-tier drift reporting via `document_quality_tiers` and `expected_*_by_tier`.
-- Fixture graph extraction recall is currently `1.000` for expected entities, references, and sections across 10 generated documents.
-- A reproducible planner tuning fixture can generate a local sweep manifest under `data/generated/`.
-- Knowledge cards include confidence, answerability reason, unresolved ambiguity notes, and follow-up retrieval suggestions.
-- `knowledge_graph.json` is now persisted per document and exposed via API document detail responses.
+- Visual broad benchmark: 6 fixture types (dense table, form, text+figure, bar chart, pie chart, financial metrics) with visual page_hit_rate=1.000, planner page_hit_rate=0.800 (improved from 0.800 to 1.000 after term normalization fix).
+- Graph extraction recall at 1.000 for expected entities, references, and sections across 10 generated documents.
+- Knowledge cards include confidence, answerability reason, unresolved ambiguity, and follow-up retrieval suggestions.
+- Background jobs infrastructure supports async ingest/chunk/index via file-based queue, CLI, API, and Docker worker target.
 
 ## Quick Start
 
