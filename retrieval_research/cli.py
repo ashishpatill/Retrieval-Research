@@ -11,6 +11,7 @@ from retrieval_research.evidence import build_knowledge_card
 from retrieval_research.evaluation.runner import report_to_markdown, run_eval
 from retrieval_research.ingest import ingest_path
 from retrieval_research.config import get_settings
+from retrieval_research.jobs import JobStore, JobType, JobStatus
 from retrieval_research.retrieval import (
     DEFAULT_PLANNER_RERANK,
     DEFAULT_RERANK_OVERLAP_WEIGHT,
@@ -32,6 +33,10 @@ def _store(args: argparse.Namespace) -> ArtifactStore:
     return ArtifactStore(args.store)
 
 
+def _job_store(args: argparse.Namespace) -> JobStore:
+    return JobStore()
+
+
 def _positive_int(value: str) -> int:
     parsed = int(value)
     if parsed <= 0:
@@ -40,6 +45,14 @@ def _positive_int(value: str) -> int:
 
 
 def cmd_ingest(args: argparse.Namespace) -> None:
+    if args.async_run:
+        job = _job_store(args).submit(
+            JobType.INGEST,
+            {"path": args.path, "ocr": args.ocr, "mode": args.mode, "dpi": args.dpi},
+        )
+        print(job.job_id)
+        return
+
     document = ingest_path(
         args.path,
         store=_store(args),
@@ -52,6 +65,18 @@ def cmd_ingest(args: argparse.Namespace) -> None:
 
 
 def cmd_chunk(args: argparse.Namespace) -> None:
+    if args.async_run:
+        job = _job_store(args).submit(
+            JobType.CHUNK,
+            {
+                "document_id": args.document_id,
+                "max_words": args.max_words,
+                "overlap_words": args.overlap_words,
+            },
+        )
+        print(job.job_id)
+        return
+
     store = _store(args)
     document = store.load_document(args.document_id)
     chunks = chunk_document(document, max_words=args.max_words, overlap_words=args.overlap_words)
@@ -61,6 +86,21 @@ def cmd_chunk(args: argparse.Namespace) -> None:
 
 
 def cmd_index(args: argparse.Namespace) -> None:
+    if args.async_run:
+        job = _job_store(args).submit(
+            JobType.INDEX,
+            {
+                "document_id": args.document_id,
+                "mode": args.mode,
+                "visual_backend": args.visual_backend,
+                "colpali_model": args.colpali_model,
+                "visual_compression": args.visual_compression,
+                "device": args.device,
+            },
+        )
+        print(job.job_id)
+        return
+
     store = _store(args)
     chunks = store.load_chunks(args.document_id)
     try:
@@ -165,6 +205,41 @@ def cmd_eval(args: argparse.Namespace) -> None:
     print(f"saved: {md_path}")
 
 
+def cmd_worker(args: argparse.Namespace) -> None:
+    from retrieval_research.jobs.worker import run_worker
+    run_worker(poll_interval=args.poll_interval)
+
+
+def cmd_jobs(args: argparse.Namespace) -> None:
+    js = _job_store(args)
+    status_filter = JobStatus(args.status) if args.status else None
+    for job in js.list_jobs(status=status_filter, limit=args.limit):
+        status_icon = {"pending": "○", "running": "●", "succeeded": "✓", "failed": "✗"}.get(job.status.value, "?")
+        print(f"{status_icon} {job.job_id}  {job.type.value:10s}  {job.status.value:10s}  {job.created_at}")
+        if job.error:
+            print(f"   error: {job.error}")
+
+
+def cmd_job_status(args: argparse.Namespace) -> None:
+    js = _job_store(args)
+    job = js.load(args.job_id)
+    if job is None:
+        print(f"error: job not found: {args.job_id}", file=sys.stderr)
+        raise SystemExit(1)
+    print(f"job_id:     {job.job_id}")
+    print(f"type:       {job.type.value}")
+    print(f"status:     {job.status.value}")
+    print(f"created:    {job.created_at}")
+    if job.started_at:
+        print(f"started:    {job.started_at}")
+    if job.completed_at:
+        print(f"completed:  {job.completed_at}")
+    if job.error:
+        print(f"error:      {job.error}")
+    if job.result:
+        print(f"result:     {job.result}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="rr", description="Retrieval Research local CLI")
     parser.add_argument(
@@ -179,12 +254,14 @@ def build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--ocr", action="store_true", help="Run OCR/refinement for image and PDF inputs")
     ingest.add_argument("--mode", choices=["Pure Local", "Pure Cloud", "Hybrid"], default=_settings.default_ocr_mode)
     ingest.add_argument("--dpi", type=int, default=_settings.default_dpi)
+    ingest.add_argument("--async", action="store_true", dest="async_run", help="Submit as a background job")
     ingest.set_defaults(func=cmd_ingest)
 
     chunk = sub.add_parser("chunk", help="Create page-aware chunks")
     chunk.add_argument("document_id")
     chunk.add_argument("--max-words", type=int, default=_settings.default_chunk_max_words)
     chunk.add_argument("--overlap-words", type=int, default=_settings.default_chunk_overlap_words)
+    chunk.add_argument("--async", action="store_true", dest="async_run", help="Submit as a background job")
     chunk.set_defaults(func=cmd_chunk)
 
     index = sub.add_parser("index", help="Build retrieval indexes")
@@ -194,6 +271,7 @@ def build_parser() -> argparse.ArgumentParser:
     index.add_argument("--visual-compression", choices=["none", "int8"], default=_settings.default_visual_compression)
     index.add_argument("--colpali-model", default=DEFAULT_COLPALI_MODEL)
     index.add_argument("--device", default=_settings.default_device, help="ColPali device: auto, cpu, mps, cuda:0, etc.")
+    index.add_argument("--async", action="store_true", dest="async_run", help="Submit as a background job")
     index.set_defaults(func=cmd_index)
 
     query = sub.add_parser("query", help="Query indexed documents")
@@ -240,6 +318,19 @@ def build_parser() -> argparse.ArgumentParser:
     eval_parser.add_argument("--planner-rerank-overlap-weight", type=float, default=DEFAULT_RERANK_OVERLAP_WEIGHT)
     eval_parser.add_argument("--planner-sweep", action="store_true", help="Benchmark all planner merge/rerank variants")
     eval_parser.set_defaults(func=cmd_eval)
+
+    worker = sub.add_parser("worker", help="Run the background job worker")
+    worker.add_argument("--poll-interval", type=float, default=_settings.job_poll_interval, help="Seconds between polls")
+    worker.set_defaults(func=cmd_worker)
+
+    jobs = sub.add_parser("jobs", help="List background jobs")
+    jobs.add_argument("--status", choices=[s.value for s in JobStatus], help="Filter by status")
+    jobs.add_argument("--limit", type=int, default=50, help="Max jobs to show")
+    jobs.set_defaults(func=cmd_jobs)
+
+    job_status = sub.add_parser("job-status", help="Show background job details")
+    job_status.add_argument("job_id")
+    job_status.set_defaults(func=cmd_job_status)
 
     return parser
 
