@@ -145,7 +145,11 @@ def _section_aliases(section: str | None) -> set[str]:
     aliases = {key}
     match = re.match(r"^([a-z]?\d+(?:\.\d+)*)(?:\s+(.+))?$", key)
     if match:
-        aliases.add(match.group(1))
+        num_part = match.group(1)
+        aliases.add(num_part)
+        parts = num_part.split(".")
+        for i in range(1, len(parts)):
+            aliases.add(".".join(parts[:i]))
         if match.group(2):
             aliases.add(match.group(2).strip())
     return {alias for alias in aliases if alias}
