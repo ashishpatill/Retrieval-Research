@@ -1,39 +1,55 @@
+import { BookOpen, FileText } from "lucide-react";
 import Link from "next/link";
 import { IngestForm } from "@/components/ingest-form";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getDocuments } from "@/lib/api";
 
 export default async function DocumentsPage() {
   const { documents } = await getDocuments();
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-zinc-100">Documents</h1>
-        <span className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-300">
-          {documents.length} total
-        </span>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Documents</h1>
+          <p className="mt-1 text-muted-foreground">{documents.length} document{documents.length !== 1 ? "s" : ""} indexed.</p>
+        </div>
+        <Badge variant="secondary" className="text-xs">{documents.length} total</Badge>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-2 lg:col-span-2">
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-3 lg:col-span-2">
           {documents.map((document) => (
-            <Link
-              key={document.id}
-              href={`/documents/${document.id}`}
-              className="block rounded-lg border border-zinc-800 bg-zinc-900 p-4 hover:bg-zinc-800/60"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <p className="truncate text-sm font-semibold text-zinc-100">{document.title}</p>
-                <p className="font-mono text-[11px] text-zinc-400">{document.id}</p>
-              </div>
-              <p className="mt-2 text-xs text-zinc-300">{document.source_path}</p>
-              <p className="mt-1 text-xs text-zinc-500">
-                {document.page_count} pages | {document.source_type ?? "unknown source"}
-              </p>
+            <Link key={document.id} href={`/documents/${document.id}`}>
+              <Card className="transition-colors hover:bg-accent/50">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <FileText className="mt-0.5 h-5 w-5 text-primary" />
+                      <div>
+                        <p className="font-semibold leading-none">{document.title}</p>
+                        <p className="mt-1.5 text-sm text-muted-foreground">{document.source_path}</p>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Badge variant="outline" className="text-xs">
+                        {document.page_count} pages
+                      </Badge>
+                      <span className="font-mono text-xs text-muted-foreground">{document.id}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </Link>
           ))}
-          {documents.length === 0 ? (
-            <p className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-400">No documents found.</p>
-          ) : null}
+          {documents.length === 0 && (
+            <Card>
+              <CardContent className="flex flex-col items-center gap-3 py-12">
+                <BookOpen className="h-8 w-8 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">No documents found.</p>
+              </CardContent>
+            </Card>
+          )}
         </div>
         <IngestForm />
       </div>
