@@ -93,6 +93,17 @@ Completed:
   - 18 job tests covering models, store edge cases, handler dispatch.
 - Phase 7 follow-up — Dependabot config:
   - `.github/dependabot.yml` with pip (weekly), npm (weekly), and Docker (weekly) ecosystems.
+- Phase 4 follow-up — broad visual benchmarks:
+  - Enhanced fixture builder (`scripts/build_visual_broad_benchmark.py`) with 6 diverse document types: dense table, application form, text with figure, bar chart, pie chart, financial metrics.
+  - 10-query eval manifest with single-document and cross-corpus queries.
+  - Baseline results: visual page_hit_rate=1.000, mrr=1.000; planner page_hit_rate=0.800, mrr=0.800.
+  - Reference manifest template at `datasets/manifests/visual_broad_benchmark.example.json`.
+- Infra/quality improvements:
+  - Fixed `--store` flag handling for `cmd_eval` (None → default root).
+  - Removed misleading `args` parameter from `_job_store()` (jobs use independent config).
+  - Added `list_indexes()` method and corrupt-entry warning logging to `ArtifactStore`.
+  - Fixed Next.js web ingest form to send `?sync=true` for async API compatibility.
+  - Added worker, jobs, job-status, and broad benchmark documentation to README.
 
 Remaining / next:
 
@@ -108,7 +119,7 @@ Remaining / next:
 
 Next session start point:
 
-1. Broaden visual retrieval quality benchmarks on larger real image/table-heavy corpora.
+1. Continue planner classifier calibration on mixed corpora while monitoring planner-vs-static deltas.
 2. Broaden visual retrieval quality benchmarks on larger real image/table-heavy corpora.
 3. Continue planner classifier calibration on mixed corpora while monitoring planner-vs-static deltas.
 
