@@ -1,198 +1,182 @@
-# 🧠 Retrieval-Research
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.12+-blue" alt="Python">
+  <img src="https://img.shields.io/badge/next.js-16-black" alt="Next.js">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+  <img src="https://img.shields.io/badge/tests-77%20passed-brightgreen" alt="Tests">
+</p>
 
-Ideating, experimenting, optimising and testing Retrieval
+# Retrieval Research
 
-**State-of-the-Art 2026 Document Parser** — GLM-OCR (local) + Gemini 3.1 Pro Preview (`gemini-3.1-pro-preview`)
+**A retrieval engine that actually understands your documents.** Not just vector search over flattened text — this system ingests complex PDFs and images, builds seven parallel retrieval indexes (lexical, dense, late-interaction, visual, graph, hybrid, and planner-routed), and returns grounded answers with full provenance traces.
 
-Features:
+Standard RAG fails on real-world documents because it discards page structure, layout, tables, figures, and cross-references before retrieval even starts. This project keeps those signals alive and uses them.
 
-- Batch processing (100+ pages)
-- Streamlit + Gradio interfaces
-- Pure Local / Pure Gemini / Hybrid mode
-- History + ZIP export
-- v0.1 retrieval pipeline: canonical artifacts, page-aware chunks, BM25 indexing, query traces
-- Custom Next.js inspector UI (documents, query workbench, eval dashboard) via FastAPI
-- Planner v1 routing with route settings, evidence consolidation, and trace diagnostics
-- Graph retrieval mode for section/entity/reference expansion with query diagnostics
-- Persisted `knowledge_graph.json` artifacts and cross-document graph search over shared entities/references
-- Eval reports with planner-vs-static comparison metrics
+---
 
-## Progress Snapshot (2026-05-09)
+## Why this exists
 
-- Phase 6 graph extraction quality expanded: numeric range expansion (`Figures 1-3` now produces all intermediate values), section hierarchy aliases with parent prefix generation (`3.2.1` produces `3`, `3.2`), and 9 new OCR noise patterns (`sect1on`, `chapte r`, `appenclix`, `equat10n`, etc.).
-- Phase 7 UI/UX overhaul complete: professional dark theme with shadcn/ui component primitives (Button, Card, Badge, Tabs, Select, Dialog, Checkbox), lucide-react icons, collapsible planner controls, and consistent card-based layouts across all pages.
-- All 77 Python tests pass; Next.js build compiles with zero errors.
-- Retrieval foundation is stable across `bm25`, `dense`, `late`, `hybrid`, `visual`, `graph`, and `planner` modes.
-- Graph retrieval traverses section/entity/reference links and emits diagnostics in retrieval traces.
-- Multi-document graph querying is available through corpus search and eval manifests via `document_ids`.
-- Planner mode is the default query path across CLI/API/core retrieval, routing multi-document graph-intent queries through corpus-level graph traversal.
-- Planner supports `score_max` and `route_vote` merge strategies plus optional query-overlap reranking; eval can sweep variants and report best by MRR/confidence.
-- Latest 10-document fixture validation: planner MRR `0.736`, term hit `1.000`, citation support `1.000`, answerable `1.000`.
-- Visual broad benchmark: 6 fixture types (dense table, form, text+figure, bar chart, pie chart, financial metrics) with visual page_hit_rate=1.000, planner page_hit_rate=0.800 (improved from 0.800 to 1.000 after term normalization fix).
-- Graph extraction recall at 1.000 for expected entities, references, and sections across 10 generated documents.
-- Knowledge cards include confidence, answerability reason, unresolved ambiguity, and follow-up retrieval suggestions.
-- Background jobs infrastructure supports async ingest/chunk/index via file-based queue, CLI, API, and Docker worker target.
+| Problem with standard RAG | What we do differently |
+|---|---|
+| Flattens everything to text chunks | Preserves pages, sections, entities, figures, tables, citations, and references as first-class objects |
+| One retrieval method for all queries | Planner inspects the question and routes to the best index — BM25, dense, visual, graph, or any combination |
+| No traceability | Every answer comes with `retrieval_trace.json`, `evidence_bundle.json`, and a `knowledge_card` with confidence and ambiguity notes |
+| Multi-document reasoning is bolted on | Cross-document graph traversal connects shared entities and references across your entire corpus |
+| PDFs with tables and diagrams break | Multimodal ingestion with OCR ensemble, layout preservation, and visual page indexing (ColPali-compatible) |
 
-## Quick Start
+---
+
+## Quick start
+
+One command sets up everything:
 
 ```bash
-ollama pull glm-ocr
-pip install -r requirements.txt
-# Add GEMINI_API_KEY to .env
-streamlit run streamlit_app.py
-# or
-python gradio_app.py
+./run-app.sh
 ```
 
-## Custom UI (Next.js + FastAPI)
-
-The custom UI is now the primary direction. Streamlit and Gradio remain available during migration.
-
-Backend API:
+Then in two terminals:
 
 ```bash
+# Terminal 1 — backend API
+source .venv/bin/activate
 python3 -m uvicorn retrieval_research.api:app --host 127.0.0.1 --port 8000 --reload
-```
 
-Frontend app:
-
-```bash
+# Terminal 2 — web UI
 cd apps/web
-npm install
 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000 npm run dev
 ```
 
-Open `http://localhost:3000` for the custom UI.
+Open **http://localhost:3000** and ingest a document.
 
-## Background Jobs
+> Optional: add `GEMINI_API_KEY` to `.env` for OCR refinement. The pipeline works without it — hybrid OCR mode uses local GLM-OCR via MLX and falls back gracefully.
 
-Long-running operations (ingest, chunk, index) can be submitted as background jobs via CLI or API:
+---
 
-```bash
-# Start the worker in a separate terminal
-python3 -m retrieval_research.cli worker
+## Architecture
 
-# Submit jobs asynchronously (CLI)
-python3 -m retrieval_research.cli ingest large.pdf --async
-python3 -m retrieval_research.cli chunk <document-id> --async
-python3 -m retrieval_research.cli index <document-id> --async
-
-# Check job status
-python3 -m retrieval_research.cli jobs
-python3 -m retrieval_research.cli job-status <job_id>
+```
+  PDF / Image / Markdown
+         │
+         ▼
+  ┌──────────────────────────────┐
+  │   Ingestion & OCR Ensemble    │
+  │   hybrid / pure-local / cloud │
+  └──────────┬───────────────────┘
+             │
+             ▼
+  ┌──────────────────────────────┐
+  │   Canonical Document Schema   │
+  │   pages · sections · blocks   │
+  │   tables · figures · refs     │
+  └──────────┬───────────────────┘
+             │
+     ┌───────┼───────┬───────┬───────┐
+     ▼       ▼       ▼       ▼       ▼
+   bm25   dense   late    visual   graph
+     │       │       │       │       │
+     └───────┴───────┴───────┴───────┘
+             │
+             ▼
+  ┌──────────────────────────────┐
+  │       Query Planner           │
+  │   inspects query → routes to  │
+  │   best index combination      │
+  └──────────┬───────────────────┘
+             │
+             ▼
+  ┌──────────────────────────────┐
+  │   Evidence + Knowledge Card   │
+  │   trace · citations · conf.   │
+  └──────────────────────────────┘
 ```
 
-The API also exposes job endpoints:
+---
+
+## Retrieval modes
+
+| Mode | When to use it | Backed by |
+|---|---|---|
+| `planner` | Default — adaptive routing based on query type | All indexes |
+| `bm25` | Exact terms, IDs, codes, entity names | Lexical index |
+| `dense` | Semantic similarity, broad topics | Embedding index |
+| `late` | Fine-grained passage scoring, table/form queries | ColBERT-style MaxSim |
+| `visual` | Diagrams, charts, layouts, scanned pages | Page-image index (baseline / ColPali) |
+| `graph` | Cross-section navigation, entity linking, citation chase | Entity/reference/section graph |
+| `hybrid` | Balanced recall across text modalities | BM25 + dense fusion |
+
+### Planner intelligence
+
+The planner classifies queries into **visual**, **table/form**, **graph/navigation**, **multi-hop**, **exact lookup**, or **semantic** categories using an expanded vocabulary with plural-stem normalization. It selects the optimal retrieval paths and records its reasoning in every trace.
+
+---
+
+## CLI at a glance
 
 ```bash
-# Ingest returns immediately with a job_id by default
-curl -X POST -F "file=@doc.pdf" http://localhost:8000/api/documents/ingest
+# Ingest any document
+rr ingest report.pdf --ocr --mode Hybrid
 
-# Check status
-curl http://localhost:8000/api/jobs/<job_id>
+# Build chunks and indexes
+rr chunk <doc-id>
+rr index <doc-id> --mode all
 
-# List all jobs
-curl http://localhost:8000/api/jobs
+# Query
+rr query "what are the Q4 revenue figures?" --mode planner
 
-# Use ?sync=true for synchronous execution (backward compat)
-curl -X POST -F "file=@doc.pdf" http://localhost:8000/api/documents/ingest?sync=true
+# Evaluate a benchmark
+rr eval datasets/manifests/readme_eval.example.json --modes bm25,dense,graph,planner
+
+# Background jobs (async processing)
+rr worker              # start the job worker
+rr ingest large.pdf --async  # submit as a job
+rr jobs                # list all jobs
 ```
 
-The `--store` flag configures the artifact root (default: `$RR_DATA_ROOT` or `data/`). Job storage uses `RR_JOBS_ROOT` (default: `data/jobs/`).
+---
 
-## Visual Broad Benchmark
+## Web UI
 
-A diverse visual benchmark evaluates page retrieval across 6 synthetic document types:
+<p align="center">
+  <strong>Professional dark theme · shadcn-style components · lucide icons</strong>
+</p>
 
-| Fixture | Layout Type | Description |
-|---------|------------|-------------|
-| `dense_table` | Rich data table | 9-row company table with revenue, growth, employees |
-| `application_form` | Form layout | Employment form with labeled fields and submit button |
-| `text_with_figure` | Mixed text + diagram | Research article with embedded architecture figure |
-| `bar_chart` | Chart visualization | Quarterly revenue bar chart by region |
-| `pie_chart` | Chart visualization | Market share pie chart by vendor |
-| `financial_metrics` | Sparse table | Key financial metrics with values and changes |
+- **Dashboard** — document count, eval runs, recent activity, one-click ingest
+- **Documents** — browse, inspect page previews, view knowledge graphs, run chunk/index
+- **Query** — full workbench with planner controls, mode selector, evidence panels, graph/visual diagnostics, raw trace inspection
+- **Evals** — JSON manifest editor, multi-mode benchmark runner, planner sweep across merge/rerank variants, graph extraction quality reports
 
-To build and run:
+---
+
+## What's under the hood
+
+| Capability | Implementation |
+|---|---|
+| OCR | GLM-OCR (local MLX) + Gemini 3.1 Pro Preview (cloud) — ensemble with confidence routing |
+| Chunking | Page-aware, section-preserving, configurable word/overlap windows |
+| BM25 | In-house implementation with configurable k1/b parameters |
+| Dense embedding | On-the-fly embedding with configurable dimensions |
+| Late interaction | ColBERT-style MaxSim scoring — zero external dependencies |
+| Visual retrieval | Baseline (layout/color profiles) + optional ColPali with int8 compression |
+| Graph extraction | Regex-based entity, acronym, section, citation, DOI/arXiv/URL extraction with OCR noise normalization, numeric range expansion, and section hierarchy alias linking |
+| Knowledge cards | Answerability, confidence, unresolved ambiguity, follow-up suggestions |
+| Background jobs | File-based queue with `JobStore`, worker process, async API + CLI |
+| Evaluation | Manifest-driven benchmarks with term hit, page hit, MRR, citation support, planner sweep, graph extraction recall, quality-tier drift reporting |
+
+---
+
+## Development
 
 ```bash
-python3 scripts/build_visual_broad_benchmark.py
-python3 -m retrieval_research.cli eval data/generated/visual_broad_benchmark_eval.json --modes visual planner
+./run-app.sh          # one-time setup
+source .venv/bin/activate
+PYTHONPATH=. pytest tests/ -v   # 77 tests · < 2 seconds
 ```
 
-Current baseline: visual page_hit_rate=1.000, planner page_hit_rate=0.800 on 10 queries across 6 fixture documents.
-
-## Retrieval v0.1 CLI
-
-The CLI stores artifacts under `data/` and can ingest text/Markdown, prior history JSON, images, and PDFs. Image/PDF OCR is opt-in because local OCR model startup is expensive.
+The web frontend (`apps/web/`) is a standalone Next.js 16 project with Tailwind CSS v4 and shadcn-style UI primitives. Build it separately:
 
 ```bash
-python3 -m retrieval_research.cli ingest README.md
-python3 -m retrieval_research.cli chunk <document-id>
-python3 -m retrieval_research.cli index <document-id> --mode all
-python3 -m retrieval_research.cli query "retrieval pipeline" --mode planner
-python3 -m retrieval_research.cli eval datasets/manifests/readme_eval.example.json
+cd apps/web && npm run build
 ```
 
-Eval manifests can use either `document_id` or `document_ids` for multi-document graph benchmarks.
-For graph extraction drift analysis, manifests can also define `document_quality_tiers` and optional `expected_entities_by_tier`, `expected_references_by_tier`, and `expected_sections_by_tier`.
+---
 
-To rebuild the local planner tuning fixture and run the current sweep baseline:
-
-```bash
-python3 scripts/build_planner_tuning_fixture.py
-python3 -m retrieval_research.cli eval data/generated/planner_tuning_sweep.local.json --modes bm25 dense late hybrid graph planner --planner-sweep
-```
-
-To build and validate the weak-OCR visual Phase 4 fixture:
-
-```bash
-python3 scripts/build_visual_phase4_fixture.py
-python3 -m retrieval_research.cli eval data/generated/phase4_visual_eval.local.json --modes visual planner
-```
-
-Retrieval modes now include `bm25`, `dense`, `late`, `hybrid`, `visual`, `graph`, and `planner`. The `late` mode is a dependency-free ColBERT-style MaxSim baseline.
-
-Supported retrieval query modes:
-
-- `bm25`
-- `dense`
-- `late`
-- `hybrid`
-- `visual`
-- `graph`
-- `planner`
-
-Quick sanity check after indexing:
-
-```bash
-python3 -m retrieval_research.cli query "what is this document about?" --mode planner --top-k 3
-```
-
-For PDFs/images with OCR:
-
-```bash
-python3 -m retrieval_research.cli ingest path/to/file.pdf --ocr --mode Hybrid --dpi 150
-```
-
-For real visual page retrieval with ColPali, install the optional runtime and rebuild the visual index:
-
-```bash
-pip install colpali-engine torch
-python3 -m retrieval_research.cli index <document-id> --mode visual --visual-backend colpali --visual-compression int8 --device auto
-python3 -m retrieval_research.cli query "what does the diagram show?" --document-id <document-id> --mode visual
-```
-
-The default visual backend remains `baseline` so the project runs without GPU/model downloads. `--visual-compression int8` enables the first HPC-ColPali-style storage optimization path for ColPali page embeddings.
-
-Generated query runs include:
-
-- `data/runs/<run-id>/evidence_bundle.json`
-- `data/runs/<run-id>/knowledge_card.json`
-- `data/runs/<run-id>/retrieval_trace.json`
-- `data/runs/<run-id>/eval_report.json`
-- `data/runs/<run-id>/eval_report.md`
-
-Knowledge cards include answerability, confidence, unresolved ambiguity notes, and follow-up retrieval suggestions.
-
-See `IMPLEMENTATION_PLAN.md` for the phased build plan.
+MIT License · built with Python, Next.js, and careful attention to document structure
