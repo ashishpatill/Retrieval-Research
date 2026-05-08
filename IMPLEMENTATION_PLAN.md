@@ -4,7 +4,7 @@ This plan turns `retrieval_roadmap.md` into an implementation sequence for the p
 
 ## Progress status (session checkpoint)
 
-Last updated: 2026-05-09 (phase 7 configuration + hardening completion pass)
+Last updated: 2026-05-09 (phase 7 — background jobs + systematic error handling completed)
 
 Current milestone: **v0.3 (phase 7 — hardening)**
 
@@ -73,10 +73,26 @@ Completed:
   - `.env.example` documents all 30+ configuration variables with sensible defaults.
   - Structured logging module (`retrieval_research/log.py`) with configurable level and optional file output.
   - Expanded test suite: `test_config.py` (config system coverage), `test_chunking.py` (chunking correctness), `test_retrieval.py` (all retrieval engines + edge cases), `test_log.py` (logging module).
-  - Dockerfile with two targets: `api` (FastAPI/uvicorn) and `cli` (entrypoint).
+  - Dockerfile with three targets: `api` (FastAPI/uvicorn), `cli` (entrypoint), and `worker` (background job worker).
   - Legacy `core_processor.py` deletion committed.
+- Phase 7 follow-up — error handling (systematic pass):
+  - `safe_generate_content()` with retry logic in `core_processor/gemini_client.py`.
+  - Import guard + error wrapping for MLX/GLM-OCR in `core_processor/mlx_backend.py`.
+  - Structured logging + error resilience + Gemini fallback in `core_processor/pipeline.py`.
+  - Graceful handling of corrupt images, PDFs, and JSON in `retrieval_research/ingest/service.py`.
+  - Manifest load error handling in `retrieval_research/evaluation/runner.py`.
+- Phase 7 follow-up — background jobs for ingestion/indexing:
+  - File-based job queue (`retrieval_research/jobs/`) with `Job`, `JobStatus`, `JobType` models.
+  - `JobStore` backed by JSON files; supports submit, load, list (with status filter), claim_next, complete, fail.
+  - `handle_job()` dispatches INGEST/CHUNK/INDEX/PIPELINE job types to existing service functions.
+  - `run_worker()` polls the queue, processes jobs, handles SIGINT/SIGTERM for graceful shutdown.
+  - API: async/sync pattern on ingest/chunk/index with `?sync=true` for backward compat; new pipeline endpoint; new `/api/jobs` and `/api/jobs/{id}` endpoints.
+  - CLI: `rr worker`, `rr jobs`, `rr job-status`, `--async` flag on ingest/chunk/index.
+  - Docker worker target in `Dockerfile`.
+  - Config: `RR_JOBS_ROOT` and `RR_JOB_POLL_INTERVAL` in config + `.env.example`.
+  - 18 job tests covering models, store edge cases, handler dispatch.
 
-In progress / remaining for near-term roadmap:
+Remaining / next:
 
 - Phase 4 follow-up:
   - Broaden visual retrieval quality benchmarks beyond fixture data on larger real image/table-heavy corpora.
@@ -86,13 +102,11 @@ In progress / remaining for near-term roadmap:
   - Continue stress-testing graph extraction on noisier PDFs/OCR output and widen quality-tier corpora.
   - Revisit optional NLP/LLM extractors only if normalized rule-based extraction still misses key entities/references.
 - Phase 7 follow-up:
-  - Background jobs for ingestion/indexing.
-  - Error handling for missing models, failed OCR, failed API calls, corrupt PDFs (systematic pass).
   - Dependabot/renovate config for dependency updates.
 
 Next session start point:
 
-1. Phase 7 follow-up: background jobs + systematic error handling.
+1. Dependabot/renovate config for dependency updates.
 2. Broaden visual retrieval quality benchmarks on larger real image/table-heavy corpora.
 3. Continue planner classifier calibration on mixed corpora while monitoring planner-vs-static deltas.
 
@@ -390,7 +404,7 @@ Deliverables:
   - retrieval backends
   - API keys
   - GPU/CPU options
-- Add background jobs for ingestion/indexing.
+- Add background jobs for ingestion/indexing (file-based queue with JobStore, worker, API, CLI).
 - Add structured logging.
 - Add error handling for missing models, failed OCR, failed API calls, and corrupt PDFs.
 - Add Docker/devcontainer path if feasible.
