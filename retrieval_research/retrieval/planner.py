@@ -6,35 +6,83 @@ from typing import Dict, List
 
 
 PLANNER_MERGE_STRATEGIES = ("score_max", "route_vote")
-TABLE_TERMS = {"table", "row", "column", "cell", "invoice", "form", "total", "amount", "spreadsheet"}
+
+_STEM_SUFFIXES = ("s", "es", "ies", "ing", "ed", "tion", "ings")
+
+TABLE_TERMS = {
+    "table", "tables", "tabular",
+    "row", "rows",
+    "column", "columns",
+    "cell", "cells",
+    "invoice", "invoices",
+    "form", "forms",
+    "total", "totals", "amount", "amounts",
+    "spreadsheet", "spreadsheets",
+    "ledger", "register", "financial",
+    "metric", "metrics", "stat", "stats",
+    "grid", "matrix",
+}
 VISUAL_TERMS = {
-    "figure",
-    "diagram",
-    "chart",
-    "plot",
-    "image",
-    "screenshot",
-    "flowchart",
-    "visual",
-    "layout",
-    "page",
-    "scan",
+    "figure", "figures",
+    "diagram", "diagrams",
+    "chart", "charts",
+    "plot", "plots",
+    "image", "images", "imagery",
+    "screenshot", "screenshots",
+    "flowchart", "flowcharts",
+    "visual", "visually", "visualization", "visualizations",
+    "layout", "layouts",
+    "page", "pages",
+    "scan", "scans", "scanning",
     "handwriting",
+    "graph", "graphs",
+    "drawing", "drawings",
+    "sketch", "sketches",
+    "photo", "photos", "photograph", "photographs",
+    "illustration", "illustrations",
+    "map", "maps",
 }
 MULTIHOP_TERMS = {
-    "compare",
+    "compare", "comparison", "comparing",
     "contrast",
-    "relationship",
+    "relationship", "relationships",
     "across",
     "between",
     "cross",
     "corpus",
     "documents",
     "multi",
-    "summarize",
-    "synthesis",
+    "summarize", "summarizes", "summary",
+    "synthesis", "synthesize",
+    "overview",
+    "aggregate",
+    "among",
 }
-GRAPH_TERMS = {"section", "reference", "entity", "topic", "related", "neighbor", "context"}
+GRAPH_TERMS = {
+    "section", "sections",
+    "reference", "references",
+    "entity", "entities",
+    "topic", "topics",
+    "related",
+    "neighbor", "neighbors", "neighborhood",
+    "context", "contexts",
+    "hierarchy", "hierarchical",
+    "outline",
+    "structure", "structures",
+    "navigation",
+}
+
+
+def _normalize_terms(terms: set[str]) -> set[str]:
+    normalized = set(terms)
+    for term in terms:
+        for suffix in _STEM_SUFFIXES:
+            if term.endswith(suffix) and len(term) > len(suffix) + 2:
+                stem = term[: -len(suffix)]
+                normalized.add(stem)
+                if suffix == "ies" and term.endswith("ies"):
+                    normalized.add(stem + "y")
+    return normalized
 
 
 @dataclass
@@ -93,54 +141,95 @@ def plan_query(query: str, merge_strategy: str = "score_max") -> QueryPlan:
     if merge_strategy not in PLANNER_MERGE_STRATEGIES:
         raise ValueError(f"Unsupported planner merge strategy: {merge_strategy}")
     normalized = query.lower()
-    terms = set(re.findall(r"[a-z0-9_]+", normalized))
+    raw_terms = set(re.findall(r"[a-z0-9_]+", normalized))
+    terms = raw_terms | _normalize_terms(raw_terms)
 
     if terms & VISUAL_TERMS:
-        routes = ["visual", "hybrid"]
+        has_text_terms = bool(terms - VISUAL_TERMS - TABLE_TERMS - MULTIHOP_TERMS - GRAPH_TERMS)
+        if has_text_terms:
+            routes = ["visual", "hybrid"]
+        else:
+            routes = ["visual"]
         return QueryPlan(
             query_type="visual",
             routes=routes,
             reason="visual/layout terms detected",
-            route_explanation="Detected visual/layout terms, prioritizing visual retrieval with hybrid fallback.",
+            route_explanation="Detected visual/layout terms, prioritizing visual retrieval with hybrid fallback."
+            if has_text_terms
+            else "Detected visual-only terms, using visual retrieval.",
             route_settings=_settings_for("visual", routes),
             merge_strategy=merge_strategy,
         )
+
     if terms & TABLE_TERMS:
-        routes = ["bm25", "late", "hybrid"]
+        if terms & MULTIHOP_TERMS:
+            routes = ["hybrid", "late", "bm25"]
+            return QueryPlan(
+                query_type="multi_hop",
+                routes=routes,
+                reason="table/form terms with multi-hop intent",
+                route_explanation="Detected table/form terms with multi-hop/comparison intent, routing to late interaction and hybrid.",
+                route_settings=_settings_for("multi_hop", routes),
+                merge_strategy=merge_strategy,
+            )
+        routes = ["late", "hybrid"]
         return QueryPlan(
             query_type="table_or_form",
             routes=routes,
             reason="table/form terms detected",
-            route_explanation="Detected table/form terms, favoring lexical and late-interaction retrieval.",
+            route_explanation="Detected table/form terms, prioritizing late interaction with hybrid fallback.",
             route_settings=_settings_for("table_or_form", routes),
             merge_strategy=merge_strategy,
         )
-    if terms & (MULTIHOP_TERMS | GRAPH_TERMS):
-        routes = ["hybrid", "dense", "late", "graph"]
+
+    if terms & GRAPH_TERMS:
+        if terms & MULTIHOP_TERMS:
+            routes = ["graph", "hybrid"]
+            return QueryPlan(
+                query_type="multi_hop",
+                routes=routes,
+                reason="graph/section terms with multi-hop intent",
+                route_explanation="Detected graph/section terms with multi-hop intent, routing to graph traversal and hybrid.",
+                route_settings=_settings_for("multi_hop", routes),
+                merge_strategy=merge_strategy,
+            )
+        routes = ["graph", "hybrid"]
         return QueryPlan(
-            query_type="multi_hop" if terms & MULTIHOP_TERMS else "graph_expansion",
+            query_type="graph_nav",
             routes=routes,
-            reason="synthesis, graph, or neighborhood terms detected",
-            route_explanation="Detected synthesis/graph intent, enabling graph-aware multi-route retrieval.",
+            reason="graph/section terms detected",
+            route_explanation="Detected graph/section terms, routing to graph retrieval with hybrid fallback.",
+            route_settings=_settings_for("graph_nav", routes),
+            merge_strategy=merge_strategy,
+        )
+
+    if terms & MULTIHOP_TERMS:
+        routes = ["hybrid", "dense"]
+        return QueryPlan(
+            query_type="multi_hop",
+            routes=routes,
+            reason="multi-hop terms detected",
+            route_explanation="Detected multi-hop/comparison terms, routing to hybrid and dense retrieval.",
             route_settings=_settings_for("multi_hop", routes),
             merge_strategy=merge_strategy,
         )
+
     if _looks_like_identifier_query(query, terms):
-        routes = ["bm25", "late", "hybrid"]
+        routes = ["bm25"]
         return QueryPlan(
             query_type="exact_lookup",
             routes=routes,
-            reason="identifier-style lookup detected",
-            route_explanation="Detected identifier-style query patterns, prioritizing exact lexical matching.",
+            reason="identifier/code pattern detected",
+            route_explanation="Detected identifier or code-like pattern, routing directly to BM25.",
             route_settings=_settings_for("exact_lookup", routes),
             merge_strategy=merge_strategy,
         )
-    routes = ["hybrid"]
+
     return QueryPlan(
         query_type="semantic",
-        routes=routes,
-        reason="default semantic retrieval route",
-        route_explanation="No special routing signals detected, using semantic hybrid retrieval.",
-        route_settings=_settings_for("semantic", routes),
+        routes=["dense", "bm25"],
+        reason="default semantic routing",
+        route_explanation="No specific visual/table/graph/identifier terms detected; using dense + BM25 hybrid.",
+        route_settings=_settings_for("semantic", ["dense", "bm25"]),
         merge_strategy=merge_strategy,
     )
