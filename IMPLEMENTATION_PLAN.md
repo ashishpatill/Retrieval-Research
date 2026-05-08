@@ -107,21 +107,15 @@ Completed:
 
 Remaining / next:
 
-- Phase 4 follow-up:
-  - Broaden visual retrieval quality benchmarks beyond fixture data on larger real image/table-heavy corpora.
 - Phase 5 follow-up:
   - Continue classifier calibration on real mixed corpora and monitor planner-vs-static tradeoffs after default mode changes.
 - Phase 6 follow-up (ongoing quality expansion, non-blocking):
   - Continue stress-testing graph extraction on noisier PDFs/OCR output and widen quality-tier corpora.
   - Revisit optional NLP/LLM extractors only if normalized rule-based extraction still misses key entities/references.
-- Phase 7 follow-up:
-  - Dependabot config for dependency updates (pip, npm, Docker in `.github/dependabot.yml`).
 
 Next session start point:
 
 1. Continue planner classifier calibration on mixed corpora while monitoring planner-vs-static deltas.
-2. Broaden visual retrieval quality benchmarks on larger real image/table-heavy corpora.
-3. Continue planner classifier calibration on mixed corpora while monitoring planner-vs-static deltas.
 
 Latest shipped increment (2026-05-03):
 
