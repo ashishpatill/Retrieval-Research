@@ -47,6 +47,10 @@ class AppSettings:
     default_colpali_model: str = "vidore/colpali-v1.2"
     default_device: str = "auto"
 
+    # ── Jobs / Background worker ────────────────────────────────────────
+    jobs_root: str = "data/jobs"
+    job_poll_interval: float = 2.0
+
     # ── Retrieval ────────────────────────────────────────────────────────
     default_top_k: int = 5
     default_retrieval_mode: str = "planner"
@@ -120,6 +124,9 @@ def get_settings() -> AppSettings:
         # ColPali
         default_colpali_model=_env_str("RR_COLPALI_MODEL", "vidore/colpali-v1.2"),
         default_device=_env_str("RR_DEVICE", "auto"),
+        # Jobs / Background worker
+        jobs_root=_env_str("RR_JOBS_ROOT", "data/jobs"),
+        job_poll_interval=_env_float("RR_JOB_POLL_INTERVAL", 2.0),
         # Retrieval
         default_top_k=_env_int("RR_TOP_K", 5),
         default_retrieval_mode=_env_str("RR_RETRIEVAL_MODE", "planner"),
