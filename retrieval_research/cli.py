@@ -225,7 +225,7 @@ def cmd_jobs(args: argparse.Namespace) -> None:
 
 
 def cmd_job_status(args: argparse.Namespace) -> None:
-    js = _job_store(args)
+    js = _job_store()
     job = js.load(args.job_id)
     if job is None:
         print(f"error: job not found: {args.job_id}", file=sys.stderr)
