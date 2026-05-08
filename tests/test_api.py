@@ -53,7 +53,7 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(detail_res.json()["stats"]["chunk_count"], len(chunks))
 
             index_res = client.post(
-                f"/api/documents/{document.id}/index",
+                f"/api/documents/{document.id}/index?sync=true",
                 json={"mode": "all", "visual_backend": "baseline", "visual_compression": "none"},
             )
             self.assertEqual(index_res.status_code, 200)
@@ -103,7 +103,7 @@ class ApiTest(unittest.TestCase):
             client = TestClient(app)
 
             upload_res = client.post(
-                "/api/documents/ingest",
+                "/api/documents/ingest?sync=true",
                 files={"file": ("upload.md", b"# Upload\n\nUpload endpoint body.", "text/markdown")},
                 data={"ocr": "false", "mode": "Hybrid", "dpi": "150"},
             )

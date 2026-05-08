@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -15,6 +15,7 @@ from retrieval_research.evaluation.runner import report_to_markdown, run_eval
 from retrieval_research.evidence import build_knowledge_card
 from retrieval_research.ingest import ingest_path
 from retrieval_research.config import get_settings
+from retrieval_research.jobs import JobStore, JobType, JobStatus
 from retrieval_research.retrieval import (
     DEFAULT_RERANK_OVERLAP_WEIGHT,
     DEFAULT_PLANNER_RERANK,
@@ -81,9 +82,16 @@ def create_app(store_root: str | None = None) -> FastAPI:
     def _store() -> ArtifactStore:
         return ArtifactStore(resolved_root)
 
+    def _job_store() -> JobStore:
+        return JobStore()
+
+    # ── Health ────────────────────────────────────────────────────────────
+
     @app.get("/api/health")
     def health() -> Dict[str, str]:
         return {"status": "ok", "service": "retrieval-research-api", "version": "0.1.0"}
+
+    # ── Documents ─────────────────────────────────────────────────────────
 
     @app.get("/api/documents")
     def list_documents() -> Dict[str, Any]:
@@ -155,40 +163,76 @@ def create_app(store_root: str | None = None) -> FastAPI:
             "knowledge_graph": knowledge_graph,
         }
 
+    # ── Ingest (sync + async) ─────────────────────────────────────────────
+
     @app.post("/api/documents/ingest")
     async def ingest_document(
         file: UploadFile = File(...),
         ocr: bool = Form(False),
         mode: str = Form(""),
         dpi: int = Form(0),
+        sync: bool = Query(False, description="Run synchronously and return the document directly"),
     ) -> Dict[str, Any]:
         settings = get_settings()
         mode = mode or settings.default_ocr_mode
         dpi = dpi or settings.default_dpi
+        content = await file.read()
         suffix = Path(file.filename or "upload.bin").suffix
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp:
-            content = await file.read()
-            temp.write(content)
-            temp_path = temp.name
-        try:
-            document = ingest_path(temp_path, store=_store(), run_ocr=ocr, mode=mode, dpi=dpi)
-        finally:
-            Path(temp_path).unlink(missing_ok=True)
-        return {"document_id": document.id, "document": document.to_dict()}
 
-    @app.post("/api/documents/{document_id}/chunk")
-    def chunk_endpoint(document_id: str, payload: ChunkRequest) -> Dict[str, Any]:
+        if sync:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp:
+                temp.write(content)
+                temp_path = temp.name
+            try:
+                document = ingest_path(temp_path, store=_store(), run_ocr=ocr, mode=mode, dpi=dpi)
+            finally:
+                Path(temp_path).unlink(missing_ok=True)
+            return {"document_id": document.id, "document": document.to_dict()}
+
+        store = _store()
+        job_id = f"ingest_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
+        persistent_path = store.raw_dir / job_id / (file.filename or "upload.bin")
+        persistent_path.parent.mkdir(parents=True, exist_ok=True)
+        persistent_path.write_bytes(content)
+        job = _job_store().submit(
+            JobType.INGEST,
+            {"path": str(persistent_path), "ocr": ocr, "mode": mode, "dpi": dpi},
+        )
+        return {"job_id": job.job_id, "status": job.status.value}
+
+    # ── Chunk (sync + async) ──────────────────────────────────────────────
+
+    def _chunk_sync(document_id: str, max_words: int, overlap_words: int) -> Dict[str, Any]:
         store = _store()
         try:
             document = store.load_document(document_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=f"Document not found: {document_id}") from exc
-        chunks = chunk_document(document, max_words=payload.max_words, overlap_words=payload.overlap_words)
+        chunks = chunk_document(document, max_words=max_words, overlap_words=overlap_words)
         path = store.save_chunks(document_id, chunks)
         return {"document_id": document_id, "chunk_count": len(chunks), "saved_path": str(path)}
 
-    @app.post("/api/documents/{document_id}/index")
-    def index_endpoint(document_id: str, payload: IndexRequest) -> Dict[str, Any]:
+    @app.post("/api/documents/{document_id}/chunk")
+    def chunk_endpoint(
+        document_id: str,
+        payload: ChunkRequest,
+        sync: bool = Query(False, description="Run synchronously and return results directly"),
+    ) -> Dict[str, Any]:
+        if sync:
+            return _chunk_sync(document_id, payload.max_words, payload.overlap_words)
+        job = _job_store().submit(
+            JobType.CHUNK,
+            {
+                "document_id": document_id,
+                "max_words": payload.max_words,
+                "overlap_words": payload.overlap_words,
+            },
+        )
+        return {"job_id": job.job_id, "status": job.status.value}
+
+    # ── Index (sync + async) ──────────────────────────────────────────────
+
+    def _index_sync(document_id: str, payload: IndexRequest) -> Dict[str, Any]:
         store = _store()
         supported_index_modes = {"all", *RETRIEVAL_MODES}
         if payload.mode not in supported_index_modes:
@@ -208,6 +252,92 @@ def create_app(store_root: str | None = None) -> FastAPI:
         except RuntimeError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"document_id": document_id, "saved_paths": paths}
+
+    @app.post("/api/documents/{document_id}/index")
+    def index_endpoint(
+        document_id: str,
+        payload: IndexRequest,
+        sync: bool = Query(False, description="Run synchronously and return results directly"),
+    ) -> Dict[str, Any]:
+        supported_index_modes = {"all", *RETRIEVAL_MODES}
+        if payload.mode not in supported_index_modes:
+            raise HTTPException(status_code=400, detail=f"Unsupported index mode: {payload.mode}")
+        if sync:
+            return _index_sync(document_id, payload)
+        job = _job_store().submit(
+            JobType.INDEX,
+            {
+                "document_id": document_id,
+                "mode": payload.mode,
+                "visual_backend": payload.visual_backend,
+                "colpali_model": payload.colpali_model,
+                "visual_compression": payload.visual_compression,
+                "device": payload.device,
+            },
+        )
+        return {"job_id": job.job_id, "status": job.status.value}
+
+    # ── Pipeline (ingest + chunk + index) ─────────────────────────────────
+
+    @app.post("/api/documents/pipeline")
+    async def pipeline_document(
+        file: UploadFile = File(...),
+        ocr: bool = Form(False),
+        mode: str = Form(""),
+        dpi: int = Form(0),
+        index_mode: str = Form("all"),
+        visual_backend: str = Form(""),
+        colpali_model: str = Form(""),
+        visual_compression: str = Form(""),
+        device: str = Form(""),
+        sync: bool = Query(False, description="Run synchronously and return results directly"),
+    ) -> Dict[str, Any]:
+        settings = get_settings()
+        mode = mode or settings.default_ocr_mode
+        dpi = dpi or settings.default_dpi
+        content = await file.read()
+        suffix = Path(file.filename or "upload.bin").suffix
+
+        if sync:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp:
+                temp.write(content)
+                temp_path = temp.name
+            try:
+                doc = ingest_path(temp_path, store=_store(), run_ocr=ocr, mode=mode, dpi=dpi)
+            finally:
+                Path(temp_path).unlink(missing_ok=True)
+            store = _store()
+            chunks = chunk_document(doc)
+            store.save_chunks(doc.id, chunks)
+            paths = build_indexes(store, doc.id, mode=index_mode)
+            return {
+                "document_id": doc.id,
+                "page_count": len(doc.pages),
+                "chunk_count": len(chunks),
+                "index_paths": paths,
+            }
+
+        store = _store()
+        job_id = f"pipeline_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
+        persistent_path = store.raw_dir / job_id / (file.filename or "upload.bin")
+        persistent_path.parent.mkdir(parents=True, exist_ok=True)
+        persistent_path.write_bytes(content)
+        job = _job_store().submit(
+            JobType.PIPELINE,
+            {
+                "ingest": {"path": str(persistent_path), "ocr": ocr, "mode": mode, "dpi": dpi},
+                "index": {
+                    "mode": index_mode,
+                    "visual_backend": visual_backend,
+                    "colpali_model": colpali_model or DEFAULT_COLPALI_MODEL,
+                    "visual_compression": visual_compression,
+                    "device": device,
+                },
+            },
+        )
+        return {"job_id": job.job_id, "status": job.status.value}
+
+    # ── Query ─────────────────────────────────────────────────────────────
 
     @app.post("/api/query")
     def query_endpoint(payload: QueryRequest) -> Dict[str, Any]:
@@ -262,6 +392,8 @@ def create_app(store_root: str | None = None) -> FastAPI:
         store.save_run(run_id, "retrieval_trace.json", trace.to_dict())
         return {"run_id": run_id, "result": result.to_dict(), "trace": trace.to_dict()}
 
+    # ── Runs ──────────────────────────────────────────────────────────────
+
     @app.get("/api/runs")
     def list_runs() -> Dict[str, Any]:
         return {"runs": _store().list_runs()}
@@ -276,6 +408,8 @@ def create_app(store_root: str | None = None) -> FastAPI:
         for file_path in sorted(run_dir.glob("*.json")):
             payload["files"][file_path.name] = store.load_json(file_path)
         return payload
+
+    # ── Eval ──────────────────────────────────────────────────────────────
 
     @app.post("/api/eval")
     def eval_endpoint(payload: EvalRequest) -> Dict[str, Any]:
@@ -313,6 +447,34 @@ def create_app(store_root: str | None = None) -> FastAPI:
         md_path = store.runs_dir / run_id / "eval_report.md"
         md_path.write_text(markdown, encoding="utf-8")
         return {"run_id": run_id, "eval_report_path": str(json_path), "eval_markdown_path": str(md_path), "report": report}
+
+    # ── Jobs ──────────────────────────────────────────────────────────────
+
+    @app.get("/api/jobs")
+    def list_jobs(status: Optional[str] = Query(None, description="Filter by job status")) -> Dict[str, Any]:
+        js = _job_store()
+        if status:
+            try:
+                filter_status = JobStatus(status)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid job status: {status}")
+            jobs = js.list_jobs(status=filter_status)
+        else:
+            jobs = js.list_jobs()
+        return {
+            "jobs": [
+                {"job_id": j.job_id, "type": j.type.value, "status": j.status.value, "created_at": j.created_at, "error": j.error}
+                for j in jobs
+            ]
+        }
+
+    @app.get("/api/jobs/{job_id}")
+    def job_detail(job_id: str) -> Dict[str, Any]:
+        js = _job_store()
+        job = js.load(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+        return job.to_dict()
 
     return app
 
