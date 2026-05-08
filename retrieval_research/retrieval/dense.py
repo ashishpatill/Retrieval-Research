@@ -4,18 +4,19 @@ import hashlib
 import math
 from typing import Any, Dict, Iterable, List, Tuple
 
+from retrieval_research.config import get_settings
 from retrieval_research.retrieval.bm25 import tokenize
 from retrieval_research.schema import Chunk, Evidence
 
 
 def _term_weight(term: str) -> float:
-    # A deterministic pseudo-IDF-ish weight. This is a local baseline, not a
-    # replacement for real embedding models planned for later roadmap phases.
     digest = hashlib.sha1(term.encode("utf-8")).digest()
     return 0.75 + (digest[0] / 255.0)
 
 
-def hashed_embedding(text: str, dimensions: int = 384) -> List[float]:
+def hashed_embedding(text: str, dimensions: int = 0) -> List[float]:
+    settings = get_settings()
+    dimensions = dimensions or settings.default_dense_dimensions
     vector = [0.0] * dimensions
     for term in tokenize(text):
         digest = hashlib.sha1(term.encode("utf-8")).digest()
@@ -34,10 +35,11 @@ def cosine(a: List[float], b: List[float]) -> float:
 
 
 class DenseIndex:
-    def __init__(self, chunks: Iterable[Chunk], dimensions: int = 384):
+    def __init__(self, chunks: Iterable[Chunk], dimensions: int = 0):
+        settings = get_settings()
         self.chunks = list(chunks)
-        self.dimensions = dimensions
-        self.vectors = [hashed_embedding(chunk.text, dimensions=dimensions) for chunk in self.chunks]
+        self.dimensions = dimensions or settings.default_dense_dimensions
+        self.vectors = [hashed_embedding(chunk.text, dimensions=self.dimensions) for chunk in self.chunks]
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -49,8 +51,9 @@ class DenseIndex:
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "DenseIndex":
+        settings = get_settings()
         chunks = [Chunk.from_dict(item) for item in payload.get("chunks", [])]
-        index = cls(chunks, dimensions=payload.get("dimensions", 384))
+        index = cls(chunks, dimensions=payload.get("dimensions", settings.default_dense_dimensions))
         if "vectors" in payload:
             index.vectors = payload["vectors"]
         return index

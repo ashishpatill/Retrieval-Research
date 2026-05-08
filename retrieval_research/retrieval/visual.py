@@ -5,17 +5,19 @@ from typing import Any, Dict, List, Tuple
 
 from PIL import Image, ImageFilter, ImageStat
 
+from retrieval_research.config import get_settings
 from retrieval_research.retrieval.dense import cosine, hashed_embedding
 from retrieval_research.schema import Document, Evidence, Page
 
 
 class VisualPageIndex:
-    def __init__(self, document: Document, dimensions: int = 384):
+    def __init__(self, document: Document, dimensions: int = 0):
+        settings = get_settings()
         self.document_id = document.id
         self.title = document.title
         self.pages = list(document.pages)
-        self.dimensions = dimensions
-        self.vectors = [hashed_embedding(self._page_text(page), dimensions=dimensions) for page in self.pages]
+        self.dimensions = dimensions or settings.default_visual_dimensions
+        self.vectors = [hashed_embedding(self._page_text(page), dimensions=self.dimensions) for page in self.pages]
 
     def _profile_tokens(self, page: Page) -> list[str]:
         tokens = ["layout_unknown"]
@@ -93,6 +95,7 @@ class VisualPageIndex:
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "VisualPageIndex":
+        settings = get_settings()
         pages = [
             Page(
                 id=item["id"],
@@ -110,7 +113,7 @@ class VisualPageIndex:
             pages=pages,
             metadata={"source": "visual_page_index"},
         )
-        index = cls(document, dimensions=payload.get("dimensions", 384))
+        index = cls(document, dimensions=payload.get("dimensions", settings.default_visual_dimensions))
         if "vectors" in payload:
             index.vectors = payload["vectors"]
         return index

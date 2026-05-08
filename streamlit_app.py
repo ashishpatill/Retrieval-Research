@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from retrieval_research.chunking import chunk_document
 from retrieval_research.evidence import build_knowledge_card
 from retrieval_research.retrieval import build_indexes, search_document
+from retrieval_research.config import get_settings
 from retrieval_research.storage import ArtifactStore
 
 load_dotenv()
@@ -175,7 +176,7 @@ else:
 st.divider()
 st.header("🔎 Retrieval Inspector")
 
-store = ArtifactStore("data")
+store = ArtifactStore(get_settings().data_root)
 documents = store.list_documents()
 
 if not documents:

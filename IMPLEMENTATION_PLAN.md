@@ -4,9 +4,9 @@ This plan turns `retrieval_roadmap.md` into an implementation sequence for the p
 
 ## Progress status (session checkpoint)
 
-Last updated: 2026-05-03 (phase 6 completion pass)
+Last updated: 2026-05-09 (phase 7 configuration + hardening completion pass)
 
-Current milestone: **v0.3 (in progress)**
+Current milestone: **v0.3 (phase 7 — hardening)**
 
 Completed:
 
@@ -65,6 +65,16 @@ Completed:
   - Added OCR-noise-tolerant reference normalization for section/figure/table/arXiv signals in graph extraction.
   - Graph index adds section reading-order and numeric hierarchy edges (`next_section` / `previous_section` / `child_section` / `parent_section`) for planner and graph expansion.
   - `document_profile.json` includes `structured_reference_inventory` (figures, tables, sections, citations, DOIs, arXiv, URLs) aligned with graph reference extraction.
+- Phase 7 hardening (configuration system + structured logging + Docker + expanded tests):
+  - Centralized configuration system in `retrieval_research/config.py` with 30+ env-configurable settings covering storage paths, API keys, OCR/ingestion, chunking, BM25, dense, late interaction, visual, ColPali, and retrieval defaults.
+  - All retrieval index classes (BM25, dense, late, visual, ColPali) resolve defaults from the centralized config system.
+  - CLI, API, eval runner, ingestion service, chunking module, and Streamlit UI all wire through `get_settings()`.
+  - Removed the monolithic `core_processor.py` (moved to `core_processor/` package); `core_processor/settings.py` now delegates to centralized config.
+  - `.env.example` documents all 30+ configuration variables with sensible defaults.
+  - Structured logging module (`retrieval_research/log.py`) with configurable level and optional file output.
+  - Expanded test suite: `test_config.py` (config system coverage), `test_chunking.py` (chunking correctness), `test_retrieval.py` (all retrieval engines + edge cases), `test_log.py` (logging module).
+  - Dockerfile with two targets: `api` (FastAPI/uvicorn) and `cli` (entrypoint).
+  - Legacy `core_processor.py` deletion committed.
 
 In progress / remaining for near-term roadmap:
 
@@ -75,10 +85,14 @@ In progress / remaining for near-term roadmap:
 - Phase 6 follow-up (ongoing quality expansion, non-blocking):
   - Continue stress-testing graph extraction on noisier PDFs/OCR output and widen quality-tier corpora.
   - Revisit optional NLP/LLM extractors only if normalized rule-based extraction still misses key entities/references.
+- Phase 7 follow-up:
+  - Background jobs for ingestion/indexing.
+  - Error handling for missing models, failed OCR, failed API calls, corrupt PDFs (systematic pass).
+  - Dependabot/renovate config for dependency updates.
 
 Next session start point:
 
-1. Start Phase 7 configuration system (models, storage paths, retrieval backends).
+1. Phase 7 follow-up: background jobs + systematic error handling.
 2. Broaden visual retrieval quality benchmarks on larger real image/table-heavy corpora.
 3. Continue planner classifier calibration on mixed corpora while monitoring planner-vs-static deltas.
 

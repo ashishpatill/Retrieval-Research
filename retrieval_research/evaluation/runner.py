@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from retrieval_research.evidence import build_knowledge_card
+from retrieval_research.config import get_settings
 from retrieval_research.retrieval import (
     DEFAULT_PLANNER_RERANK,
     DEFAULT_RERANK_OVERLAP_WEIGHT,
@@ -516,14 +517,16 @@ def run_eval(
     store: Optional[ArtifactStore] = None,
     top_k: int = 5,
     modes: Optional[List[str]] = None,
-    planner_merge_strategy: str = "score_max",
+    planner_merge_strategy: str = "",
     planner_rerank: bool = DEFAULT_PLANNER_RERANK,
     planner_route_vote_bonus: float = DEFAULT_ROUTE_VOTE_BONUS,
     planner_rerank_overlap_weight: float = DEFAULT_RERANK_OVERLAP_WEIGHT,
     planner_sweep: Any = False,
 ) -> Dict[str, Any]:
+    settings = get_settings()
     store = store or ArtifactStore()
     modes = modes or list(RETRIEVAL_MODES)
+    planner_merge_strategy = planner_merge_strategy or settings.default_planner_merge_strategy
     manifest = _load_manifest(manifest_path)
     cases = manifest.get("queries", [])
     results = []
@@ -713,7 +716,7 @@ def report_to_markdown(report: Dict[str, Any]) -> str:
         lines.extend([
             "",
             "| Variant | Strategy | Rerank | Vote bonus | Overlap weight | MRR | Avg confidence | Term hit | Page hit |",
-            "|---|---|---:|---:|---:|---:|---:|---:|---:|",
+            "|---|---:|---:|---:|---:|---:|---:|---:|",
         ])
         for variant in planner_sweep["variants"]:
             variant_metrics = variant["metrics"]

@@ -3,11 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+from retrieval_research.config import get_settings
 from retrieval_research.retrieval.compression import maybe_compress_embeddings, maybe_decompress_embedding
 from retrieval_research.schema import Document, Evidence, Page
 
 
-DEFAULT_COLPALI_MODEL = "vidore/colpali-v1.2"
+DEFAULT_COLPALI_MODEL = get_settings().default_colpali_model
 
 
 class ColPaliUnavailableError(RuntimeError):
@@ -63,26 +64,31 @@ class ColPaliPageIndex:
         title: str,
         pages: List[Page],
         embeddings: List[Any],
-        model_name: str = DEFAULT_COLPALI_MODEL,
-        device: str = "auto",
-        compression: str = "none",
+        model_name: str = "",
+        device: str = "",
+        compression: str = "",
     ):
+        settings = get_settings()
         self.document_id = document_id
         self.title = title
         self.pages = pages
         self.embeddings = embeddings
-        self.model_name = model_name
-        self.device = device
-        self.compression = compression
+        self.model_name = model_name or settings.default_colpali_model
+        self.device = device or settings.default_device
+        self.compression = compression or settings.default_visual_compression
 
     @classmethod
     def build(
         cls,
         document: Document,
-        model_name: str = DEFAULT_COLPALI_MODEL,
-        device: str = "auto",
-        compression: str = "none",
+        model_name: str = "",
+        device: str = "",
+        compression: str = "",
     ) -> "ColPaliPageIndex":
+        settings = get_settings()
+        model_name = model_name or settings.default_colpali_model
+        device = device or settings.default_device
+        compression = compression or settings.default_visual_compression
         torch, Image, ColPali, ColPaliProcessor = _load_runtime()
         resolved_device = _default_device(torch) if device == "auto" else device
         dtype = torch.bfloat16 if resolved_device != "cpu" else torch.float32
@@ -127,14 +133,15 @@ class ColPaliPageIndex:
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "ColPaliPageIndex":
+        settings = get_settings()
         return cls(
             document_id=payload["document_id"],
             title=payload.get("title", ""),
             pages=[_page_from_payload(item) for item in payload.get("pages", [])],
             embeddings=payload.get("embeddings", []),
-            model_name=payload.get("model_name", DEFAULT_COLPALI_MODEL),
-            device=payload.get("device", "auto"),
-            compression=payload.get("embedding_compression", "none"),
+            model_name=payload.get("model_name", settings.default_colpali_model),
+            device=payload.get("device", settings.default_device),
+            compression=payload.get("embedding_compression", settings.default_visual_compression),
         )
 
     def search(self, query: str, top_k: int = 5) -> List[Evidence]:

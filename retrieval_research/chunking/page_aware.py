@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import List, Optional, Tuple
 
+from retrieval_research.config import get_settings
 from retrieval_research.schema import Chunk, Document
 
 
@@ -35,7 +36,10 @@ def _page_segments(text: str) -> List[Tuple[Optional[str], List[str]]]:
     return segments
 
 
-def chunk_document(document: Document, max_words: int = 220, overlap_words: int = 40) -> List[Chunk]:
+def chunk_document(document: Document, max_words: int = 0, overlap_words: int = 0) -> List[Chunk]:
+    settings = get_settings()
+    max_words = max_words or settings.default_chunk_max_words
+    overlap_words = overlap_words if overlap_words is not None else settings.default_chunk_overlap_words
     chunks: List[Chunk] = []
     chunk_index = 0
 

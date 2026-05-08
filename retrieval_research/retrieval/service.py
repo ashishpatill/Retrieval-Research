@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import List, Tuple
 
+from retrieval_research.config import get_settings
 from retrieval_research.retrieval.bm25 import BM25Index
 from retrieval_research.retrieval.colpali import DEFAULT_COLPALI_MODEL, ColPaliPageIndex
 from retrieval_research.retrieval.dense import DenseIndex
@@ -16,9 +17,11 @@ from retrieval_research.storage import ArtifactStore
 
 
 RETRIEVAL_MODES = ("bm25", "dense", "late", "hybrid", "visual", "graph", "planner")
-DEFAULT_ROUTE_VOTE_BONUS = 0.08
-DEFAULT_PLANNER_RERANK = True
-DEFAULT_RERANK_OVERLAP_WEIGHT = 0.10
+
+_settings = get_settings()
+DEFAULT_ROUTE_VOTE_BONUS = _settings.default_route_vote_bonus
+DEFAULT_PLANNER_RERANK = _settings.default_planner_rerank
+DEFAULT_RERANK_OVERLAP_WEIGHT = _settings.default_rerank_overlap_weight
 
 TOKEN_RE = re.compile(r"[a-z0-9_]+")
 
@@ -97,7 +100,6 @@ def _consolidate_planner_hits(
     redundancies = []
     conflicts = []
 
-    # Detect near-duplicate evidence across chunk IDs on the same page.
     for idx, item in enumerate(selected):
         for other in selected[idx + 1 :]:
             if item.chunk_id == other.chunk_id:
@@ -163,11 +165,16 @@ def build_indexes(
     store: ArtifactStore,
     document_id: str,
     mode: str = "all",
-    visual_backend: str = "baseline",
-    colpali_model: str = DEFAULT_COLPALI_MODEL,
-    visual_compression: str = "none",
-    device: str = "auto",
+    visual_backend: str = "",
+    colpali_model: str = "",
+    visual_compression: str = "",
+    device: str = "",
 ) -> List[str]:
+    settings = get_settings()
+    visual_backend = visual_backend or settings.default_visual_backend
+    colpali_model = colpali_model or settings.default_colpali_model
+    visual_compression = visual_compression or settings.default_visual_compression
+    device = device or settings.default_device
     chunks = store.load_chunks(document_id)
     saved = []
     if mode in {"all", "bm25", "hybrid", "planner"}:
@@ -328,13 +335,16 @@ def search_document(
     store: ArtifactStore,
     document_id: str,
     query: str,
-    mode: str = "planner",
+    mode: str = "",
     top_k: int = 5,
-    planner_merge_strategy: str = "score_max",
+    planner_merge_strategy: str = "",
     planner_rerank: bool = DEFAULT_PLANNER_RERANK,
     planner_route_vote_bonus: float = DEFAULT_ROUTE_VOTE_BONUS,
     planner_rerank_overlap_weight: float = DEFAULT_RERANK_OVERLAP_WEIGHT,
 ) -> Tuple[List[Evidence], List[dict]]:
+    settings = get_settings()
+    mode = mode or settings.default_retrieval_mode
+    planner_merge_strategy = planner_merge_strategy or settings.default_planner_merge_strategy
     steps = []
     if mode == "bm25":
         index = BM25Index.from_dict(store.load_index(document_id, "bm25"))
@@ -455,13 +465,16 @@ def search_corpus(
     store: ArtifactStore,
     document_ids: List[str],
     query: str,
-    mode: str = "planner",
+    mode: str = "",
     top_k: int = 5,
-    planner_merge_strategy: str = "score_max",
+    planner_merge_strategy: str = "",
     planner_rerank: bool = DEFAULT_PLANNER_RERANK,
     planner_route_vote_bonus: float = DEFAULT_ROUTE_VOTE_BONUS,
     planner_rerank_overlap_weight: float = DEFAULT_RERANK_OVERLAP_WEIGHT,
 ) -> Tuple[List[Evidence], List[dict]]:
+    settings = get_settings()
+    mode = mode or settings.default_retrieval_mode
+    planner_merge_strategy = planner_merge_strategy or settings.default_planner_merge_strategy
     if mode == "planner" and len(document_ids) > 1:
         return _search_corpus_planner(
             store,

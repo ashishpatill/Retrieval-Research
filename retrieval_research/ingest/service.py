@@ -8,13 +8,10 @@ from typing import List, Optional
 
 from PIL import Image
 
+from retrieval_research.config import get_settings
 from retrieval_research.profiling import build_document_profile
 from retrieval_research.schema import Document, Page
 from retrieval_research.storage import ArtifactStore
-
-
-DEFAULT_SYSTEM = "You are an expert document parser. Extract content accurately and preserve structure."
-DEFAULT_QUERY = "Extract all text, tables as Markdown, formulas as LaTeX. Return clean structured output."
 
 
 def stable_document_id(path: Path, content: bytes) -> str:
@@ -130,11 +127,14 @@ def ingest_path(
     path: str,
     store: Optional[ArtifactStore] = None,
     run_ocr: bool = False,
-    mode: str = "Hybrid",
-    system_prompt: str = DEFAULT_SYSTEM,
-    user_query: str = DEFAULT_QUERY,
-    dpi: int = 150,
+    mode: str = "",
+    system_prompt: Optional[str] = None,
+    user_query: Optional[str] = None,
+    dpi: int = 0,
 ) -> Document:
+    settings = get_settings()
+    mode = mode or settings.default_ocr_mode
+    dpi = dpi or settings.default_dpi
     store = store or ArtifactStore()
     source = Path(path)
     content = source.read_bytes()
@@ -147,9 +147,9 @@ def ingest_path(
     elif suffix == ".json":
         document = _document_from_history(source, document_id)
     elif suffix in {".png", ".jpg", ".jpeg", ".webp", ".tiff", ".bmp"}:
-        document = _document_from_image(source, content, document_id, store, run_ocr, mode, system_prompt, user_query)
+        document = _document_from_image(source, content, document_id, store, run_ocr, mode, system_prompt or "", user_query or "")
     elif suffix == ".pdf":
-        document = _document_from_pdf(source, content, document_id, store, run_ocr, mode, system_prompt, user_query, dpi)
+        document = _document_from_pdf(source, content, document_id, store, run_ocr, mode, system_prompt or "", user_query or "", dpi)
     else:
         raise ValueError(f"Unsupported input type: {suffix or source.name}")
 

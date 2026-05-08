@@ -5,6 +5,7 @@ import re
 from collections import Counter, defaultdict
 from typing import Any, Dict, Iterable, List, Tuple
 
+from retrieval_research.config import get_settings
 from retrieval_research.schema import Chunk, Evidence
 
 
@@ -16,9 +17,10 @@ def tokenize(text: str) -> List[str]:
 
 
 class BM25Index:
-    def __init__(self, chunks: Iterable[Chunk], k1: float = 1.5, b: float = 0.75):
-        self.k1 = k1
-        self.b = b
+    def __init__(self, chunks: Iterable[Chunk], k1: float = 0.0, b: float = 0.0):
+        settings = get_settings()
+        self.k1 = k1 or settings.default_bm25_k1
+        self.b = b or settings.default_bm25_b
         self.chunks = list(chunks)
         self.doc_freq: Dict[str, int] = defaultdict(int)
         self.term_freqs: List[Counter] = []
@@ -48,8 +50,9 @@ class BM25Index:
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "BM25Index":
+        settings = get_settings()
         chunks = [Chunk.from_dict(item) for item in payload.get("chunks", [])]
-        return cls(chunks, k1=payload.get("k1", 1.5), b=payload.get("b", 0.75))
+        return cls(chunks, k1=payload.get("k1", settings.default_bm25_k1), b=payload.get("b", settings.default_bm25_b))
 
     def search(self, query: str, top_k: int = 5) -> List[Evidence]:
         if not self.chunks:

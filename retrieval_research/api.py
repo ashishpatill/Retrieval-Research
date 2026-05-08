@@ -14,6 +14,7 @@ from retrieval_research.chunking import chunk_document
 from retrieval_research.evaluation.runner import report_to_markdown, run_eval
 from retrieval_research.evidence import build_knowledge_card
 from retrieval_research.ingest import ingest_path
+from retrieval_research.config import get_settings
 from retrieval_research.retrieval import (
     DEFAULT_RERANK_OVERLAP_WEIGHT,
     DEFAULT_PLANNER_RERANK,
@@ -28,25 +29,28 @@ from retrieval_research.schema import RetrievalResult, RetrievalTrace
 from retrieval_research.storage import ArtifactStore
 
 
+_settings = get_settings()
+
+
 class ChunkRequest(BaseModel):
-    max_words: int = Field(default=220, ge=20, le=2000)
-    overlap_words: int = Field(default=40, ge=0, le=500)
+    max_words: int = Field(default=_settings.default_chunk_max_words, ge=20, le=2000)
+    overlap_words: int = Field(default=_settings.default_chunk_overlap_words, ge=0, le=500)
 
 
 class IndexRequest(BaseModel):
     mode: str = "all"
-    visual_backend: str = "baseline"
-    visual_compression: str = "none"
-    colpali_model: str = DEFAULT_COLPALI_MODEL
-    device: str = "auto"
+    visual_backend: str = ""
+    visual_compression: str = ""
+    colpali_model: str = ""
+    device: str = ""
 
 
 class QueryRequest(BaseModel):
     question: str = Field(min_length=1)
     document_id: Optional[str] = None
-    top_k: int = Field(default=5, ge=1, le=50)
-    mode: str = "planner"
-    planner_merge_strategy: str = "score_max"
+    top_k: int = Field(default=_settings.default_top_k, ge=1, le=50)
+    mode: str = ""
+    planner_merge_strategy: str = ""
     planner_rerank: bool = DEFAULT_PLANNER_RERANK
     planner_route_vote_bonus: float = Field(default=DEFAULT_ROUTE_VOTE_BONUS, ge=0.0, le=1.0)
     planner_rerank_overlap_weight: float = Field(default=DEFAULT_RERANK_OVERLAP_WEIGHT, ge=0.0, le=1.0)
@@ -54,16 +58,17 @@ class QueryRequest(BaseModel):
 
 class EvalRequest(BaseModel):
     manifest: Dict[str, Any]
-    top_k: int = Field(default=5, ge=1, le=50)
-    modes: List[str] = Field(default_factory=lambda: ["bm25", "dense", "late", "hybrid", "visual", "graph", "planner"])
-    planner_merge_strategy: str = "score_max"
+    top_k: int = Field(default=_settings.default_top_k, ge=1, le=50)
+    modes: List[str] = Field(default_factory=lambda: list(RETRIEVAL_MODES))
+    planner_merge_strategy: str = ""
     planner_rerank: bool = DEFAULT_PLANNER_RERANK
     planner_route_vote_bonus: float = Field(default=DEFAULT_ROUTE_VOTE_BONUS, ge=0.0, le=1.0)
     planner_rerank_overlap_weight: float = Field(default=DEFAULT_RERANK_OVERLAP_WEIGHT, ge=0.0, le=1.0)
     planner_sweep: bool = False
 
 
-def create_app(store_root: str = "data") -> FastAPI:
+def create_app(store_root: str | None = None) -> FastAPI:
+    resolved_root = store_root if store_root is not None else get_settings().data_root
     app = FastAPI(title="Retrieval Research API", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,
@@ -74,7 +79,7 @@ def create_app(store_root: str = "data") -> FastAPI:
     )
 
     def _store() -> ArtifactStore:
-        return ArtifactStore(store_root)
+        return ArtifactStore(resolved_root)
 
     @app.get("/api/health")
     def health() -> Dict[str, str]:
@@ -154,9 +159,12 @@ def create_app(store_root: str = "data") -> FastAPI:
     async def ingest_document(
         file: UploadFile = File(...),
         ocr: bool = Form(False),
-        mode: str = Form("Hybrid"),
-        dpi: int = Form(150),
+        mode: str = Form(""),
+        dpi: int = Form(0),
     ) -> Dict[str, Any]:
+        settings = get_settings()
+        mode = mode or settings.default_ocr_mode
+        dpi = dpi or settings.default_dpi
         suffix = Path(file.filename or "upload.bin").suffix
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp:
             content = await file.read()
@@ -203,9 +211,9 @@ def create_app(store_root: str = "data") -> FastAPI:
 
     @app.post("/api/query")
     def query_endpoint(payload: QueryRequest) -> Dict[str, Any]:
-        if payload.mode not in RETRIEVAL_MODES:
+        if payload.mode and payload.mode not in RETRIEVAL_MODES:
             raise HTTPException(status_code=400, detail=f"Unsupported retrieval mode: {payload.mode}")
-        if payload.planner_merge_strategy not in PLANNER_MERGE_STRATEGIES:
+        if payload.planner_merge_strategy and payload.planner_merge_strategy not in PLANNER_MERGE_STRATEGIES:
             raise HTTPException(
                 status_code=400,
                 detail=f"Unsupported planner merge strategy: {payload.planner_merge_strategy}",
@@ -244,7 +252,7 @@ def create_app(store_root: str = "data") -> FastAPI:
         )
         trace = RetrievalTrace(
             query=payload.question,
-            mode=payload.mode,
+            mode=payload.mode or get_settings().default_retrieval_mode,
             document_ids=document_ids,
             steps=steps,
         )
@@ -274,7 +282,7 @@ def create_app(store_root: str = "data") -> FastAPI:
         for mode in payload.modes:
             if mode not in RETRIEVAL_MODES:
                 raise HTTPException(status_code=400, detail=f"Unsupported eval mode: {mode}")
-        if payload.planner_merge_strategy not in PLANNER_MERGE_STRATEGIES:
+        if payload.planner_merge_strategy and payload.planner_merge_strategy not in PLANNER_MERGE_STRATEGIES:
             raise HTTPException(
                 status_code=400,
                 detail=f"Unsupported planner merge strategy: {payload.planner_merge_strategy}",

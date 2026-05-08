@@ -10,6 +10,7 @@ from retrieval_research.chunking import chunk_document
 from retrieval_research.evidence import build_knowledge_card
 from retrieval_research.evaluation.runner import report_to_markdown, run_eval
 from retrieval_research.ingest import ingest_path
+from retrieval_research.config import get_settings
 from retrieval_research.retrieval import (
     DEFAULT_PLANNER_RERANK,
     DEFAULT_RERANK_OVERLAP_WEIGHT,
@@ -22,6 +23,9 @@ from retrieval_research.retrieval import (
 )
 from retrieval_research.schema import RetrievalResult, RetrievalTrace
 from retrieval_research.storage import ArtifactStore
+
+
+_settings = get_settings()
 
 
 def _store(args: argparse.Namespace) -> ArtifactStore:
@@ -163,37 +167,45 @@ def cmd_eval(args: argparse.Namespace) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="rr", description="Retrieval Research local CLI")
-    parser.add_argument("--store", default="data", help="Artifact store root")
+    parser.add_argument(
+        "--store",
+        default=None,
+        help="Artifact store root (default: $RR_DATA_ROOT or data)",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     ingest = sub.add_parser("ingest", help="Ingest a document into canonical JSON")
     ingest.add_argument("path")
     ingest.add_argument("--ocr", action="store_true", help="Run OCR/refinement for image and PDF inputs")
-    ingest.add_argument("--mode", choices=["Pure Local", "Pure Cloud", "Hybrid"], default="Hybrid")
-    ingest.add_argument("--dpi", type=int, default=150)
+    ingest.add_argument("--mode", choices=["Pure Local", "Pure Cloud", "Hybrid"], default=_settings.default_ocr_mode)
+    ingest.add_argument("--dpi", type=int, default=_settings.default_dpi)
     ingest.set_defaults(func=cmd_ingest)
 
     chunk = sub.add_parser("chunk", help="Create page-aware chunks")
     chunk.add_argument("document_id")
-    chunk.add_argument("--max-words", type=int, default=220)
-    chunk.add_argument("--overlap-words", type=int, default=40)
+    chunk.add_argument("--max-words", type=int, default=_settings.default_chunk_max_words)
+    chunk.add_argument("--overlap-words", type=int, default=_settings.default_chunk_overlap_words)
     chunk.set_defaults(func=cmd_chunk)
 
     index = sub.add_parser("index", help="Build retrieval indexes")
     index.add_argument("document_id")
     index.add_argument("--mode", choices=["all", *RETRIEVAL_MODES], default="all")
-    index.add_argument("--visual-backend", choices=["baseline", "colpali"], default="baseline")
-    index.add_argument("--visual-compression", choices=["none", "int8"], default="none")
+    index.add_argument("--visual-backend", choices=["baseline", "colpali"], default=_settings.default_visual_backend)
+    index.add_argument("--visual-compression", choices=["none", "int8"], default=_settings.default_visual_compression)
     index.add_argument("--colpali-model", default=DEFAULT_COLPALI_MODEL)
-    index.add_argument("--device", default="auto", help="ColPali device: auto, cpu, mps, cuda:0, etc.")
+    index.add_argument("--device", default=_settings.default_device, help="ColPali device: auto, cpu, mps, cuda:0, etc.")
     index.set_defaults(func=cmd_index)
 
     query = sub.add_parser("query", help="Query indexed documents")
     query.add_argument("question")
     query.add_argument("--document-id")
-    query.add_argument("--top-k", type=_positive_int, default=5)
-    query.add_argument("--mode", choices=RETRIEVAL_MODES, default="planner")
-    query.add_argument("--planner-merge-strategy", choices=PLANNER_MERGE_STRATEGIES, default="score_max")
+    query.add_argument("--top-k", type=_positive_int, default=_settings.default_top_k)
+    query.add_argument("--mode", choices=RETRIEVAL_MODES, default=_settings.default_retrieval_mode)
+    query.add_argument(
+        "--planner-merge-strategy",
+        choices=PLANNER_MERGE_STRATEGIES,
+        default=_settings.default_planner_merge_strategy,
+    )
     query.add_argument(
         "--planner-rerank",
         action=argparse.BooleanOptionalAction,
@@ -206,14 +218,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     eval_parser = sub.add_parser("eval", help="Run a retrieval eval manifest")
     eval_parser.add_argument("manifest")
-    eval_parser.add_argument("--top-k", type=_positive_int, default=5)
+    eval_parser.add_argument("--top-k", type=_positive_int, default=_settings.default_top_k)
     eval_parser.add_argument(
         "--modes",
         nargs="+",
         choices=RETRIEVAL_MODES,
-        default=["bm25", "dense", "late", "hybrid", "visual", "graph", "planner"],
+        default=list(RETRIEVAL_MODES),
     )
-    eval_parser.add_argument("--planner-merge-strategy", choices=PLANNER_MERGE_STRATEGIES, default="score_max")
+    eval_parser.add_argument(
+        "--planner-merge-strategy",
+        choices=PLANNER_MERGE_STRATEGIES,
+        default=_settings.default_planner_merge_strategy,
+    )
     eval_parser.add_argument(
         "--planner-rerank",
         action=argparse.BooleanOptionalAction,

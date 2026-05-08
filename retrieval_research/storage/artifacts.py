@@ -5,12 +5,13 @@ import shutil
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
+from retrieval_research.config import get_settings
 from retrieval_research.schema import Chunk, Document, DocumentProfile
 
 
 class ArtifactStore:
-    def __init__(self, root: str = "data"):
-        self.root = Path(root)
+    def __init__(self, root: str | None = None):
+        self.root = Path(root if root is not None else get_settings().data_root)
         self.raw_dir = self.root / "raw"
         self.pages_dir = self.root / "pages"
         self.processed_dir = self.root / "processed"

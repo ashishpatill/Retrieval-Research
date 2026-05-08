@@ -4,6 +4,7 @@ import hashlib
 import math
 from typing import Any, Dict, Iterable, List, Tuple
 
+from retrieval_research.config import get_settings
 from retrieval_research.retrieval.bm25 import tokenize
 from retrieval_research.schema import Chunk, Evidence
 
@@ -26,20 +27,14 @@ def _dot(left: List[float], right: List[float]) -> float:
 
 
 class LateInteractionIndex:
-    """Dependency-free ColBERT-style MaxSim baseline.
-
-    This keeps a per-token representation and scores each query token by its
-    best matching document token. A real ColBERT model can replace this class
-    without changing the surrounding retrieval service contract.
-    """
-
-    def __init__(self, chunks: Iterable[Chunk], dimensions: int = 128, max_doc_tokens: int = 256):
+    def __init__(self, chunks: Iterable[Chunk], dimensions: int = 0, max_doc_tokens: int = 0):
+        settings = get_settings()
         self.chunks = list(chunks)
-        self.dimensions = dimensions
-        self.max_doc_tokens = max_doc_tokens
-        self.doc_tokens = [tokenize(chunk.text)[:max_doc_tokens] for chunk in self.chunks]
+        self.dimensions = dimensions or settings.default_late_dimensions
+        self.max_doc_tokens = max_doc_tokens or settings.default_late_max_doc_tokens
+        self.doc_tokens = [tokenize(chunk.text)[:self.max_doc_tokens] for chunk in self.chunks]
         self.doc_vectors = [
-            [_token_vector(token, dimensions=dimensions) for token in tokens]
+            [_token_vector(token, dimensions=self.dimensions) for token in tokens]
             for tokens in self.doc_tokens
         ]
 
@@ -54,11 +49,12 @@ class LateInteractionIndex:
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "LateInteractionIndex":
+        settings = get_settings()
         chunks = [Chunk.from_dict(item) for item in payload.get("chunks", [])]
         index = cls(
             chunks,
-            dimensions=payload.get("dimensions", 128),
-            max_doc_tokens=payload.get("max_doc_tokens", 256),
+            dimensions=payload.get("dimensions", settings.default_late_dimensions),
+            max_doc_tokens=payload.get("max_doc_tokens", settings.default_late_max_doc_tokens),
         )
         if "doc_tokens" in payload:
             index.doc_tokens = payload["doc_tokens"]
