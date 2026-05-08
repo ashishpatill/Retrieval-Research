@@ -46,7 +46,7 @@ def _positive_int(value: str) -> int:
 
 def cmd_ingest(args: argparse.Namespace) -> None:
     if args.async_run:
-        job = _job_store(args).submit(
+        job = _job_store().submit(
             JobType.INGEST,
             {"path": args.path, "ocr": args.ocr, "mode": args.mode, "dpi": args.dpi},
         )
@@ -61,12 +61,12 @@ def cmd_ingest(args: argparse.Namespace) -> None:
         dpi=args.dpi,
     )
     print(document.id)
-    print(f"saved: {Path(args.store) / 'processed' / document.id / 'document.json'}")
+    print(f"saved: {Path(_store_root(args)) / 'processed' / document.id / 'document.json'}")
 
 
 def cmd_chunk(args: argparse.Namespace) -> None:
     if args.async_run:
-        job = _job_store(args).submit(
+        job = _job_store().submit(
             JobType.CHUNK,
             {
                 "document_id": args.document_id,
@@ -87,7 +87,7 @@ def cmd_chunk(args: argparse.Namespace) -> None:
 
 def cmd_index(args: argparse.Namespace) -> None:
     if args.async_run:
-        job = _job_store(args).submit(
+        job = _job_store().submit(
             JobType.INDEX,
             {
                 "document_id": args.document_id,
@@ -168,7 +168,7 @@ def cmd_query(args: argparse.Namespace) -> None:
     store.save_run(run_id, "retrieval_trace.json", trace.to_dict())
     print(knowledge_card.answer)
     print("")
-    print(f"run: {Path(args.store) / 'runs' / run_id}")
+    print(f"run: {Path(_store_root(args)) / 'runs' / run_id}")
 
 
 def cmd_eval(args: argparse.Namespace) -> None:
@@ -186,7 +186,7 @@ def cmd_eval(args: argparse.Namespace) -> None:
     )
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     json_path = store.save_run(run_id, "eval_report.json", report)
-    md_path = Path(args.store) / "runs" / run_id / "eval_report.md"
+    md_path = Path(_store_root(args)) / "runs" / run_id / "eval_report.md"
     md_path.write_text(report_to_markdown(report), encoding="utf-8")
     metrics = report["metrics"]
     print(f"queries: {metrics['query_count']}")
@@ -205,13 +205,17 @@ def cmd_eval(args: argparse.Namespace) -> None:
     print(f"saved: {md_path}")
 
 
+def _store_root(args: argparse.Namespace) -> str:
+    return args.store or get_settings().data_root
+
+
 def cmd_worker(args: argparse.Namespace) -> None:
     from retrieval_research.jobs.worker import run_worker
     run_worker(poll_interval=args.poll_interval)
 
 
 def cmd_jobs(args: argparse.Namespace) -> None:
-    js = _job_store(args)
+    js = _job_store()
     status_filter = JobStatus(args.status) if args.status else None
     for job in js.list_jobs(status=status_filter, limit=args.limit):
         status_icon = {"pending": "○", "running": "●", "succeeded": "✓", "failed": "✗"}.get(job.status.value, "?")
