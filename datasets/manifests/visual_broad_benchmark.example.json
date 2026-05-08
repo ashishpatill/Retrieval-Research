@@ -1,0 +1,79 @@
+{
+  "document_ids": [
+    "<dense_table_doc_id>",
+    "<application_form_doc_id>",
+    "<text_with_figure_doc_id>",
+    "<bar_chart_doc_id>",
+    "<pie_chart_doc_id>",
+    "<financial_metrics_doc_id>"
+  ],
+  "queries": [
+    {
+      "query": "Which page shows a dense data table with company revenue and employee counts?",
+      "document_id": "<dense_table_doc_id>",
+      "expected_pages": [1],
+      "expected_terms": []
+    },
+    {
+      "query": "Find the employment application form page with signature and submit button.",
+      "document_id": "<application_form_doc_id>",
+      "expected_pages": [1],
+      "expected_terms": []
+    },
+    {
+      "query": "Locate the page that contains a research article with an embedded architecture figure.",
+      "document_id": "<text_with_figure_doc_id>",
+      "expected_pages": [1],
+      "expected_terms": []
+    },
+    {
+      "query": "Which page displays a bar chart comparing quarterly revenue across regions?",
+      "document_id": "<bar_chart_doc_id>",
+      "expected_pages": [1],
+      "expected_terms": []
+    },
+    {
+      "query": "Find the pie chart page showing market share distribution among vendors.",
+      "document_id": "<pie_chart_doc_id>",
+      "expected_pages": [1],
+      "expected_terms": []
+    },
+    {
+      "query": "Which page has a sparse financial metrics table with profit margins and ratios?",
+      "document_id": "<financial_metrics_doc_id>",
+      "expected_pages": [1],
+      "expected_terms": []
+    },
+    {
+      "query": "Find pages containing structured tabular data with rows and columns.",
+      "document_ids": ["<dense_table_doc_id>", "<financial_metrics_doc_id>"],
+      "expected_pages": [1],
+      "expected_terms": []
+    },
+    {
+      "query": "Locate pages with chart or diagram visualizations.",
+      "document_ids": ["<bar_chart_doc_id>", "<pie_chart_doc_id>", "<text_with_figure_doc_id>"],
+      "expected_pages": [1],
+      "expected_terms": []
+    },
+    {
+      "query": "Which pages contain form-like layouts with labeled fields?",
+      "document_ids": ["<application_form_doc_id>"],
+      "expected_pages": [1],
+      "expected_terms": []
+    },
+    {
+      "query": "Find all pages that would benefit from visual layout analysis over pure text retrieval.",
+      "document_ids": [
+        "<dense_table_doc_id>",
+        "<application_form_doc_id>",
+        "<text_with_figure_doc_id>",
+        "<bar_chart_doc_id>",
+        "<pie_chart_doc_id>",
+        "<financial_metrics_doc_id>"
+      ],
+      "expected_pages": [1],
+      "expected_terms": []
+    }
+  ]
+}
