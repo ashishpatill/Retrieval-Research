@@ -21,6 +21,17 @@ TABLE_TERMS = {
     "ledger", "register", "financial",
     "metric", "metrics", "stat", "stats",
     "grid", "matrix",
+    "receipt", "receipts",
+    "schedule", "schedules",
+    "roster", "rosters",
+    "catalog", "catalogs", "catalogue",
+    "inventory", "inventories",
+    "budget", "budgets",
+    "roi", "cost", "costs",
+    "revenue", "revenues",
+    "payroll", "balance",
+    "transaction", "transactions",
+    "checkbook",
 }
 VISUAL_TERMS = {
     "figure", "figures",
@@ -41,6 +52,16 @@ VISUAL_TERMS = {
     "photo", "photos", "photograph", "photographs",
     "illustration", "illustrations",
     "map", "maps",
+    "ui", "interface", "interfaces",
+    "mockup", "mockups",
+    "wireframe", "wireframes",
+    "thumbnail", "thumbnails",
+    "logo", "logos",
+    "icon", "icons",
+    "blueprint", "blueprints",
+    "render", "renders", "rendering",
+    "infographic", "infographics",
+    "painting", "paintings",
 }
 MULTIHOP_TERMS = {
     "compare", "comparison", "comparing",
@@ -54,9 +75,23 @@ MULTIHOP_TERMS = {
     "multi",
     "summarize", "summarizes", "summary",
     "synthesis", "synthesize",
-    "overview",
     "aggregate",
     "among",
+    "difference", "differences",
+    "similar", "similarities", "similarly",
+    "both",
+    "vs", "versus",
+    "common", "commonalities",
+    "together",
+    "relation", "relations",
+    "correlation", "correlations",
+    "trend", "trends",
+    "pattern", "patterns",
+    "merge", "merging",
+    "combine", "combines", "combination",
+    "intersection",
+    "overlap", "overlaps", "overlapping",
+    "align", "aligns", "alignment",
 }
 GRAPH_TERMS = {
     "section", "sections",
@@ -71,6 +106,21 @@ GRAPH_TERMS = {
     "structure", "structures",
     "navigation",
     "routing",
+    "citation", "citations",
+    "cite", "cites",
+    "bibliography", "bibliographic",
+    "appendix", "appendices",
+    "subsection", "subsections",
+    "paragraph", "paragraphs",
+    "clause", "clauses",
+    "chapter", "chapters",
+    "preface", "foreword",
+    "index", "indexes",
+    "glossary",
+    "tableofcontents", "toc",
+    "parent", "child", "sibling",
+    "ancestor", "descendant",
+    "subtree", "subgraph",
 }
 
 
@@ -127,15 +177,28 @@ def _settings_for(query_type: str, routes: List[str]) -> Dict[str, dict]:
 
 
 def _looks_like_identifier_query(query: str, terms: set[str]) -> bool:
+    return _has_strong_identifier(query, terms)
+
+
+def _has_strong_identifier(query: str, terms: set[str]) -> bool:
+    if re.search(r"\b(?:10\.\d{4,9}/[^\s]+|[\w.-]+@[\w.-]+)\b", query, re.IGNORECASE):
+        return True
     if re.search(r"\b[A-Z]{2,}[-_ ]?\d{2,}\b", query):
         return True
-    identifier_hints = {"id", "invoice", "section", "figure", "table", "eq", "equation", "code", "ticket"}
+    if re.search(r"\bv?\d+[.]\d+[.]\d+\b", query):
+        return True
+    identifier_hints = {
+        "id", "invoice", "code", "key", "doi", "isbn", "issn", "patent",
+        "uuid", "token", "hash", "ticket", "license",
+    }
     if not (terms & identifier_hints):
         return False
     for term in terms:
         if len(term) >= 4 and any(ch.isalpha() for ch in term) and any(ch.isdigit() for ch in term):
             return True
-    return bool(re.search(r"\b\d{3,}\b", query))
+    if re.search(r"\b\d{3,}\b", query):
+        return True
+    return False
 
 
 def plan_query(query: str, merge_strategy: str = "score_max") -> QueryPlan:
@@ -144,6 +207,17 @@ def plan_query(query: str, merge_strategy: str = "score_max") -> QueryPlan:
     normalized = query.lower()
     raw_terms = set(re.findall(r"[a-z0-9_]+", normalized))
     terms = raw_terms | _normalize_terms(raw_terms)
+
+    if _has_strong_identifier(query, terms):
+        routes = ["bm25"]
+        return QueryPlan(
+            query_type="exact_lookup",
+            routes=routes,
+            reason="strong identifier pattern detected",
+            route_explanation="Detected strong identifier pattern (DOI, code, version, or alphanumeric ID), routing directly to BM25.",
+            route_settings=_settings_for("exact_lookup", routes),
+            merge_strategy=merge_strategy,
+        )
 
     if terms & VISUAL_TERMS:
         has_text_terms = bool(terms - VISUAL_TERMS - TABLE_TERMS - MULTIHOP_TERMS - GRAPH_TERMS)
