@@ -4,7 +4,7 @@ This plan turns `retrieval_roadmap.md` into an implementation sequence for the p
 
 ## Progress status (session checkpoint)
 
-Last updated: 2026-05-09 (phase 6 quality expansion + phase 7 UI/UX overhaul completed)
+Last updated: 2026-05-10 (planner calibration + graph stress-testing completed)
 
 Current milestone: **v0.3 (phase 7 — hardening)**
 
@@ -94,6 +94,14 @@ Completed:
   - 18 job tests covering models, store edge cases, handler dispatch.
 - Phase 7 follow-up — Dependabot config:
   - `.github/dependabot.yml` with pip (weekly), npm (weekly), and Docker (weekly) ecosystems.
+- Phase 5 follow-up — planner classifier calibration (vocabulary expansion + strong identifier detection):
+  - Expanded TABLE_TERMS: added receipt, schedule, catalog, inventory, budget, ROI, cost, revenue, payroll, balance, transaction, checkbook.
+  - Expanded VISUAL_TERMS: added UI, interface, mockup, wireframe, thumbnail, logo, icon, blueprint, render, infographic, painting.
+  - Expanded MULTIHOP_TERMS: added difference, similar, both, vs, versus, common, together, relation, correlation, trend, pattern, merge, combine, intersection, overlap, align.
+  - Expanded GRAPH_TERMS: added citation, cite, bibliography, appendix, subsection, paragraph, clause, chapter, preface, glossary, index, tableofcontents, parent, child, sibling, ancestor, descendant, subtree.
+  - Added `_has_strong_identifier()` as a pre-check in `plan_query()` — DOI, version numbers, invoice codes (XXX-12345), and alphanumeric IDs now route to `exact_lookup` before table/graph routing, fixing mixed-intent queries like "look up invoice INV-2024-001" or "find section DOI 10.1234/abc.def".
+  - Added `PlannerCalibrationTest` with 8 test methods covering 45+ calibration queries across visual, table, graph, multi-hop, identifier, semantic, and combined-intent categories.
+  - All 34 retrieval tests pass with 79 subtests covering planner routing, merge strategies, and calibration.
 - Phase 4 follow-up — broad visual benchmarks:
   - Enhanced fixture builder (`scripts/build_visual_broad_benchmark.py`) with 6 diverse document types: dense table, application form, text with figure, bar chart, pie chart, financial metrics.
   - 10-query eval manifest with single-document and cross-corpus queries.
@@ -113,17 +121,27 @@ Completed:
   - Fixed Next.js web ingest form to send `?sync=true` for async API compatibility.
   - Added worker, jobs, job-status, and broad benchmark documentation to README.
 
+- Phase 6 follow-up — graph extraction stress-testing on noisy OCR (quality expansion):
+  - Expanded OCR_REFERENCE_NORMALIZATIONS from 20 to 60+ patterns: added `sectl0n`, `secti0n`, `sectton`, `secton`, `sec ion`, `sec tlon`, `chapt3r`, `chapt er`, `chap ter`, `app3ndix`, `appen dix`, `appendixx`, `figu re`, `flgure`, `ftgure`, `ligures`, `tab le`, `tab les`, `tabke`, `tahle`, `equati0n`, `eqnation`, `equ ation`, `arxi v`, and unified plural/singular variants.
+  - Fixed `f1g(?:ures?)?` and `flg(?:ures?)?` patterns to handle plural forms (e.g., "F1gures 1-3" now correctly normalizes to "figures" for range expansion).
+  - Consolidated figure/table/section patterns to handle both singular and plural with a single regex branch.
+  - Added 4 stress-test graph tests: `test_ocr_noise_expanded_patterns` (18 cases), `test_ocr_normalize_reference_text_roundtrip`, `test_graph_stress_multiple_combined_noise`, and `test_graph_stress_numeric_range_with_noise`.
+  - Validated extraction across clean, noisy, and very-noisy quality tiers.
+
 Remaining / next:
 
 - Phase 5 follow-up:
-  - Continue classifier calibration on real mixed corpora and monitor planner-vs-static tradeoffs after default mode changes.
+  - Planner calibration is complete on the synthetic corpus. Next: run planner-vs-static deltas on real-world mixed corpora (form-heavy PDFs, scanned docs, research papers).
+  - Monitor planner classification accuracy in production-like settings; add real-query confusion matrix if deployment data becomes available.
 - Phase 6 follow-up (ongoing quality expansion, non-blocking):
-  - Continue stress-testing graph extraction on noisier PDFs/OCR output and widen quality-tier corpora.
-  - Revisit optional NLP/LLM extractors only if normalized rule-based extraction still misses key entities/references.
+  - Stress-testing is complete on synthetic OCR noise. Next: validate graph extraction on real OCR output from GLM-OCR/Gemini in Hybrid mode, particularly for section hierarchy edges and numeric reference ranges under heavy noise.
+  - Revisit NLP/LLM extractors only if normalized rule-based extraction still misses key entities/references on production-quality OCR output.
 
 Next session start point:
 
-1. Continue planner classifier calibration on mixed corpora while monitoring planner-vs-static deltas.
+1. Run planner-vs-static eval comparisons on real-world mixed corpora.
+2. Validate graph extraction recall on real OCR output (Hybrid mode) and widen quality-tier corpus with actual scanned documents.
+3. (If needed) Add CI/CD pipeline with GitHub Actions.
 
 ## Current baseline
 

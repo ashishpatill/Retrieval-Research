@@ -2,7 +2,7 @@
   <img src="https://img.shields.io/badge/python-3.12+-blue" alt="Python">
   <img src="https://img.shields.io/badge/next.js-16-black" alt="Next.js">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
-  <img src="https://img.shields.io/badge/tests-77%20passed-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-90%20passed-brightgreen" alt="Tests">
 </p>
 
 # Retrieval Research
@@ -105,7 +105,7 @@ Open **http://localhost:3000** and ingest a document.
 
 ### Planner intelligence
 
-The planner classifies queries into **visual**, **table/form**, **graph/navigation**, **multi-hop**, **exact lookup**, or **semantic** categories using an expanded vocabulary with plural-stem normalization. It selects the optimal retrieval paths and records its reasoning in every trace.
+The planner classifies queries into **visual**, **table/form**, **graph/navigation**, **multi-hop**, **exact lookup**, or **semantic** categories using an expanded vocabulary with plural-stem normalization. A strong-identifier pre-check (DOI, version numbers, invoice codes, alphanumeric IDs) routes mixed-intent queries to exact lookup before content-based routing, fixing queries like "look up invoice INV-2024-001". It selects the optimal retrieval paths and records its reasoning in every trace. A 45+ query calibration test suite validates routing accuracy across all categories.
 
 ---
 
@@ -156,7 +156,7 @@ rr jobs                # list all jobs
 | Dense embedding | On-the-fly embedding with configurable dimensions |
 | Late interaction | ColBERT-style MaxSim scoring — zero external dependencies |
 | Visual retrieval | Baseline (layout/color profiles) + optional ColPali with int8 compression |
-| Graph extraction | Regex-based entity, acronym, section, citation, DOI/arXiv/URL extraction with OCR noise normalization, numeric range expansion, and section hierarchy alias linking |
+| Graph extraction | Regex-based entity, acronym, section, citation, DOI/arXiv/URL extraction with 60+ OCR noise patterns, numeric range expansion, and section hierarchy alias linking |
 | Knowledge cards | Answerability, confidence, unresolved ambiguity, follow-up suggestions |
 | Background jobs | File-based queue with `JobStore`, worker process, async API + CLI |
 | Evaluation | Manifest-driven benchmarks with term hit, page hit, MRR, citation support, planner sweep, graph extraction recall, quality-tier drift reporting |
@@ -168,7 +168,7 @@ rr jobs                # list all jobs
 ```bash
 ./run-app.sh          # one-time setup
 source .venv/bin/activate
-PYTHONPATH=. pytest tests/ -v   # 77 tests · < 2 seconds
+PYTHONPATH=. pytest tests/ -v   # 90 tests · < 2 seconds
 ```
 
 The web frontend (`apps/web/`) is a standalone Next.js 16 project with Tailwind CSS v4 and shadcn-style UI primitives. Build it separately:
